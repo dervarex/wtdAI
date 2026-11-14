@@ -22,7 +22,7 @@ import java.util.*;
  * </ul>
  */
 public class Vocabulary {
-    static final int MAX_VOCAB = 2000;
+    static int MAX_VOCAB = 2000;
     static final String PAD = "<s>"; // fills the context before the text starts
     static final String UNK = "<unk>"; // stands for words not in the vocabulary
     static final String END = "."; // the end of a sentence

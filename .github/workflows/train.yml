@@ -21,15 +21,24 @@ on:
       seed:
         description: Words to start each sentence with
         default: "java is"
+      context:
+        description: Previous words the model looks at
+        default: "3"
+      threads:
+        description: Training threads
+        default: "4"
+      vocab:
+        description: Number of words in the vocabulary
+        default: "2000"
 
 jobs:
   train:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 360
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 25
@@ -39,7 +48,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          ./gradlew run --args="--debug --epochs ${{ inputs.epochs }} --emb ${{ inputs.emb }} --hidden ${{ inputs.hidden }} --lr ${{ inputs.lr }} --sentences ${{ inputs.sentences }} --seed '${{ inputs.seed }}' --save model.bin" | tee train.log
+          ./gradlew run --args="--debug --epochs ${{ inputs.epochs }} --emb ${{ inputs.emb }} --hidden ${{ inputs.hidden }} --lr ${{ inputs.lr }} --sentences ${{ inputs.sentences }} --seed '${{ inputs.seed }}' --context ${{ inputs.context }} --threads ${{ inputs.threads }} --vocab ${{ inputs.vocab }} --save model.bin" | tee train.log
 
       - uses: actions/upload-artifact@v4
         if: always()

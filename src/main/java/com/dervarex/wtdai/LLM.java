@@ -52,11 +52,13 @@ import java.util.*;
  * */
 public class LLM {
 
-    static final int CONTEXT = 3; // previous words the model's gonna look at
+    static int CONTEXT = 3; // previous words the model's gonna look at
     static int EMB = 16; // size of each word embedding
     static int HIDDEN = 64;// hidden layer size
     static int EPOCHS = 2;
     static double LR = 0.05;
+    static double TEST_FRACTION = 0.05; // how much of the text to use
+    static int THREADS = 1; // training threads
 
     static double[][] emb;// vocab x EMB
     static double[][] w1; // (CONTEXT*EMB) x HIDDEN
@@ -119,24 +121,74 @@ public class LLM {
         w2 = randomMatrix(rng, HIDDEN, vocab);
         b2 = new double[vocab];
 
+        int split = (int) (ids.length * (1 - TEST_FRACTION));
         for (int epoch = 0; epoch < EPOCHS; epoch++) {
-            double total = 0;
-            for (int t = 0; t < ids.length; t++) {
-                total += step(contextAt(ids, t), ids[t]);
-            }
+            // the learning rate shrinks linearly, down to 10% by the last epoch
+            double lr = LR * (1 - 0.9 * epoch / EPOCHS);
+            double total = trainEpoch(ids, split, lr);
             if (debug) {
-                System.out.printf("epoch %d, average loss %.4f%n", epoch + 1, total / ids.length);
+                System.out.printf("epoch %d, train loss %.4f, test perplexity %.2f%n",
+                        epoch + 1, total / split, perplexity(ids, split));
             }
         }
+    }
+
+    /**
+     * Runs one pass over the training part of the text, split across {@link #THREADS} threads
+     * @param ids whole text as word IDs
+     * @param split where the training part ends
+     * @param lr learning rate for this pass
+     * @return the summed loss over the pass
+     */
+    static double trainEpoch(int[] ids, int split, double lr) {
+        double[] losses = new double[THREADS];
+        Thread[] workers = new Thread[THREADS];
+        for (int k = 0; k < THREADS; k++) {
+            final int id = k;
+            final int from = (int) ((long) split * id / THREADS);
+            final int to = (int) ((long) split * (id + 1) / THREADS);
+            workers[k] = new Thread(() -> {
+                double sum = 0;
+                for (int t = from; t < to; t++) sum += step(contextAt(ids, t), ids[t], lr);
+                losses[id] = sum;
+            });
+            workers[k].start();
+        }
+        for (Thread w : workers) {
+            try {
+                w.join();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+        double total = 0;
+        for (double l : losses) total += l;
+        return total;
+    }
+
+    /**
+     * Measures how well the model predicts the held back part of the text
+     * @param ids whole text as word IDs
+     * @param from where the held back part starts
+     * @return the perplexity, lower is better
+     */
+    static double perplexity(int[] ids, int from) {
+        double nll = 0;
+        for (int t = from; t < ids.length; t++) {
+            double p = Generator.predict(contextAt(ids, t), CONTEXT)[ids[t]];
+            nll -= Math.log(p + 1e-12);
+        }
+        return Math.exp(nll / (ids.length - from));
     }
 
     /**
      * Does one training step for a single word
      * @param ctx context
      * @param target the correct next word ID the model should have predicted
+     * @param lr learning rate for this step
      * @return the cross-entropy loss
      */
-    static double step(int[] ctx, int target) {
+    static double step(int[] ctx, int target, double lr) {
         int vocab = b2.length;
 
         double[] x = new double[CONTEXT * EMB];
@@ -173,9 +225,9 @@ public class LLM {
             for (int v = 0; v < vocab; v++) dh[j] += w2[j][v] * p[v];
         }
         for (int j = 0; j < HIDDEN; j++) {
-            for (int v = 0; v < vocab; v++) w2[j][v] -= LR * h[j] * p[v];
+            for (int v = 0; v < vocab; v++) w2[j][v] -= lr * h[j] * p[v];
         }
-        for (int v = 0; v < vocab; v++) b2[v] -= LR * p[v];
+        for (int v = 0; v < vocab; v++) b2[v] -= lr * p[v];
 
         for (int j = 0; j < HIDDEN; j++) dh[j] *= 1 - h[j] * h[j];
 
@@ -183,13 +235,13 @@ public class LLM {
         for (int k = 0; k < x.length; k++) {
             for (int j = 0; j < HIDDEN; j++) {
                 dx[k] += w1[k][j] * dh[j];
-                w1[k][j] -= LR * x[k] * dh[j];
+                w1[k][j] -= lr * x[k] * dh[j];
             }
         }
-        for (int j = 0; j < HIDDEN; j++) b1[j] -= LR * dh[j];
+        for (int j = 0; j < HIDDEN; j++) b1[j] -= lr * dh[j];
 
         for (int c = 0; c < CONTEXT; c++) {
-            for (int e = 0; e < EMB; e++) emb[ctx[c]][e] -= LR * dx[c * EMB + e];
+            for (int e = 0; e < EMB; e++) emb[ctx[c]][e] -= lr * dx[c * EMB + e];
         }
         return loss;
     }
