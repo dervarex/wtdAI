@@ -16,12 +16,8 @@ public class Main {
         }
         String text = corpus.toString();
 
-        text = text.replaceAll("(?m)^#--.*$", "");
         text = text.toLowerCase();
         text = text.replace(".", " <end> ");
-        text = text.replace(",", "");
-        text = text.replaceAll("\\[.*?\\]", "");
-        text = text.replaceAll("[^a-z ]", " ");
 
         String[] tokens = text.split("\\s+");
 
