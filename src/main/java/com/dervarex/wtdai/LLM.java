@@ -63,6 +63,11 @@ public class LLM {
     static double[] b2; // vocab
 
 
+    /**
+     * Entrypoint, reads the text, tokenizes, builds the vocabulary and starts training.
+     * @param debug debug mode? (prints info)
+     * @throws IOException if reading the training data fails
+     */
     public static void start(boolean debug) throws IOException {
         List<String> tokens = Tokenizer.tokenize(Tokenizer.readText());
         Map<String, Integer> index = Vocabulary.buildVoc(tokens);
@@ -77,6 +82,12 @@ public class LLM {
         train(ids, index.size(), debug);
     }
 
+    /**
+     * Inits all weights randomly and runs the training
+     * @param ids the whole text encoded as an array of word IDs
+     * @param vocab the total number of unique words (size of the output layer)
+     * @param debug debug mode? prints epoch average loss here
+     */
     static void train(int[] ids, int vocab, boolean debug) {
         Random rng = new Random(42);
         emb = randomMatrix(rng, vocab, EMB);
@@ -96,6 +107,12 @@ public class LLM {
         }
     }
 
+    /**
+     * Does one training step for a single word
+     * @param ctx context
+     * @param target the correct next word ID the model should have predicted
+     * @return the cross-entropy loss
+     */
     static double step(int[] ctx, int target) {
         int vocab = b2.length;
 
@@ -154,6 +171,12 @@ public class LLM {
         return loss;
     }
 
+    /**
+     * Grabs the words that come before the current position, how much that is decides {@link #CONTEXT}
+     * @param ids whole text as word IDs
+     * @param t current position in text
+     * @return an array of 3 word IDs representing the context
+     */
     static int[] contextAt(int[] ids, int t) {
         int[] ctx = new int[CONTEXT];
         for (int c = 0; c < CONTEXT; c++) {
@@ -163,6 +186,13 @@ public class LLM {
         return ctx;
     }
 
+    /**
+     * Creates a matrix filled with small random numbers.
+     * @param rng random number generator
+     * @param rows how many rows the matrix should have
+     * @param cols how many columns the matrix should have
+     * @return a new matrix with random values
+     */
     static double[][] randomMatrix(Random rng, int rows, int cols) {
         double[][] m = new double[rows][cols];
         for (double[] row : m) {
