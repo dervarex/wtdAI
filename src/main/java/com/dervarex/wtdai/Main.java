@@ -3,6 +3,7 @@ package com.dervarex.wtdai;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Random;
 
 public class Main {
     public static void main(String[] args) {
@@ -44,5 +45,21 @@ public class Main {
             }
         }
         System.out.println("Best word after "+ word + ": " + bestOne);
+
+        // sampling
+        Random random = new Random();
+        double randomValue = random.nextDouble();
+        double comulative = 0;
+        String chosen = null;
+
+        for (Map.Entry<String, Integer> entry : nextWords.entrySet()) {
+            double probability = (double) entry.getValue() / totalOccurrences;
+            comulative += probability;
+            if(randomValue < comulative) {
+                chosen = entry.getKey();
+                break;
+            }
+        }
+        System.out.println("Chosen: " + chosen);
     }
 }
