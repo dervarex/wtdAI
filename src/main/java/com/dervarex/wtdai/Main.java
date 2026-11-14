@@ -17,7 +17,7 @@ public class Main {
         parser.parse(args);
 
         try {
-            NeuralLM.start(debug.get());
+            LLM.start(debug.get());
         } catch (IOException e) {
             System.out.println("Failed to start the LLM. fix your code");
         }
