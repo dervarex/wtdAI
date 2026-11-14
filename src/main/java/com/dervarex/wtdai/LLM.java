@@ -3,7 +3,52 @@ package com.dervarex.wtdai;
 import java.io.IOException;
 import java.util.*;
 
-public class NeuralLM {
+/**
+ * wtdAI - while(true) doAI;
+ * <br><br>
+ * What variable is what:
+ *
+ * <h2>Constants</h2>
+ * <ul>
+ *     <li>{@link #CONTEXT} - how many words context the model gets</li>
+ *     <li>{@link #EMB} - size of each word embedding</li>
+ *     <li>{@link #HIDDEN} - how many hidden neurons</li>
+ *     <li>{@link #EPOCHS} - how often it goes over the text for training</li>
+ *     <li>{@link #LR} - learning rate</li>
+ * </ul>
+ * <h2>Learned Parameters (basically the model)</h2>
+ * <ul>
+ *     <li>{@code x} - the 3 context embeddings</li>
+ *     <li>{@code h} - hidden activation after tanh (mathematical formula)</li>
+ *     <li>{@code s} - a single pre activation / logit (temp)</li>
+ *     <li>{@code max} - largest logic</li>
+ *     <li>{@code p} - logits, then probabilities, then gradient (wtf)</li>
+ *     <li>{@code sum} - softmax normalizer</li>
+ *     <li>{@code loss} - cross-entropy for the step</li>
+ * </ul>
+ * <h2>Inside step() - backward pass</h2>
+ * <ul>
+ *   <li>{@code p}  - after {@code p[target] -= 1}: how wrong each output score is</li>
+ *   <li>{@code dh} - first: how much each hidden neuron contributed to the error;
+ *                   then: same stuff, but measured before the tanh function</li>
+ *   <li>{@code dx} - how much each input value contributed to the error</li>
+ * </ul>
+ *
+ * <h2>Loop indices</h2>
+ * <ul>
+ *   <li>{@code c} - which context word (0..CONTEXT-1)</li>
+ *   <li>{@code e} - which embedding dimension (0..EMB-1)</li>
+ *   <li>{@code k} - flat input index (= c*EMB + e)</li>
+ *   <li>{@code j} - which hidden neuron (0..HIDDEN-1)</li>
+ *   <li>{@code v} - which vocabulary word (0..vocab-1)</li>
+ *   <li>{@code t} - position in the text</li>
+ * </ul>
+ *
+ * <b>Logit:</b> Raw score the model gives each turning before it makes percentages
+ * <b>Softmax:</b> Turns raw scores into percentages that add up to 100%
+ * <b>cross-entropy:</b> Measures how wrong these percentages are, gets measured by how little probability the model gave to the right word
+ * */
+public class LLM {
 
     static final int CONTEXT = 3; // previous words the model's gonna look at
     static final int EMB = 16; // size of each word embedding
@@ -18,6 +63,11 @@ public class NeuralLM {
     static double[] b2; // vocab
 
 
+    /**
+     * Entrypoint, reads the text, tokenizes, builds the vocabulary and starts training.
+     * @param debug debug mode? (prints info)
+     * @throws IOException if reading the training data fails
+     */
     public static void start(boolean debug) throws IOException {
         List<String> tokens = Tokenizer.tokenize(Tokenizer.readText());
         Map<String, Integer> index = Vocabulary.buildVoc(tokens);
@@ -32,6 +82,12 @@ public class NeuralLM {
         train(ids, index.size(), debug);
     }
 
+    /**
+     * Inits all weights randomly and runs the training
+     * @param ids the whole text encoded as an array of word IDs
+     * @param vocab the total number of unique words (size of the output layer)
+     * @param debug debug mode? prints epoch average loss here
+     */
     static void train(int[] ids, int vocab, boolean debug) {
         Random rng = new Random(42);
         emb = randomMatrix(rng, vocab, EMB);
@@ -51,6 +107,12 @@ public class NeuralLM {
         }
     }
 
+    /**
+     * Does one training step for a single word
+     * @param ctx context
+     * @param target the correct next word ID the model should have predicted
+     * @return the cross-entropy loss
+     */
     static double step(int[] ctx, int target) {
         int vocab = b2.length;
 
@@ -109,6 +171,12 @@ public class NeuralLM {
         return loss;
     }
 
+    /**
+     * Grabs the words that come before the current position, how much that is decides {@link #CONTEXT}
+     * @param ids whole text as word IDs
+     * @param t current position in text
+     * @return an array of 3 word IDs representing the context
+     */
     static int[] contextAt(int[] ids, int t) {
         int[] ctx = new int[CONTEXT];
         for (int c = 0; c < CONTEXT; c++) {
@@ -118,6 +186,13 @@ public class NeuralLM {
         return ctx;
     }
 
+    /**
+     * Creates a matrix filled with small random numbers.
+     * @param rng random number generator
+     * @param rows how many rows the matrix should have
+     * @param cols how many columns the matrix should have
+     * @return a new matrix with random values
+     */
     static double[][] randomMatrix(Random rng, int rows, int cols) {
         double[][] m = new double[rows][cols];
         for (double[] row : m) {

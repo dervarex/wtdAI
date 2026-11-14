@@ -2,6 +2,25 @@ package com.dervarex.wtdai;
 
 import java.util.*;
 
+/**
+ * Turns words into IDs (numbers).
+ *
+ * <p>Why? Neural networks can't calculate apple+apple </p>
+ *
+ * <h2>Special Tokens (0, 1, 2)</h2>
+ * <ul>
+ *   <li>{@code <s>} (PAD) - Fills empty context at the start of the text</li>
+ *   <li>{@code <unk>} (UNK) - "Unknown". If the model sees a word that wasn't
+ *       in the top {@link #MAX_VOCAB} list, it uses this ID instead</li>
+ *   <li>{@code .} (END) - The period. Reserved so the model can learn to predict
+ *       the end of a sentence.</li>
+ * </ul>
+ *
+ * <h2>Constants</h2>
+ * <ul>
+ *   <li>{@link #MAX_VOCAB} - how many words the vocabulary can hold</li>
+ * </ul>
+ */
 public class Vocabulary {
     static final int MAX_VOCAB = 2000;
     static final String PAD = "<s>"; // fills the context before the text starts
