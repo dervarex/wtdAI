@@ -15,6 +15,7 @@ import java.util.*;
  *     <li>{@link #HIDDEN} - how many hidden neurons</li>
  *     <li>{@link #EPOCHS} - how often it goes over the text for training</li>
  *     <li>{@link #LR} - learning rate</li>
+ *     <li>{@link #SEED} - the words to start from</li>
  * </ul>
  * <h2>Learned Parameters (basically the model)</h2>
  * <ul>
@@ -62,6 +63,8 @@ public class LLM {
     static double[][] w2; // HIDDEN x vocab
     static double[] b2; // vocab
 
+    static final String SEED = "java is";
+
 
     /**
      * Entrypoint, reads the text, tokenizes, builds the vocabulary and starts training.
@@ -80,6 +83,10 @@ public class LLM {
         }
 
         train(ids, index.size(), debug);
+
+        for (int i = 0; i < 3; i++) {
+            System.out.println(Generator.generate(SEED, CONTEXT, index));
+        }
     }
 
     /**
