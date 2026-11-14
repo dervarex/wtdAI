@@ -33,11 +33,15 @@ public class Main {
         System.out.println("Tokens: " + Arrays.toString(tokens));
 
         Map<String, Map<String, Integer>> pairs = new HashMap<>();
-        for(int i = 0; i < tokens.length -1; i++) {
-            String a = tokens[i], b = tokens[i+1];
+
+        for(int i = 0; i < tokens.length - 2; i++) {
+            String a = tokens[i] + " " + tokens[i + 1];
+            String b = tokens[i + 2];
+
             pairs.computeIfAbsent(a, k -> new HashMap<String, Integer>())
-                    .merge(b,1,Integer::sum);
+                    .merge(b, 1, Integer::sum);
         }
+
         System.out.println("Pairs: " + pairs);
 
         Map<String, Integer> nextWords = pairs.getOrDefault(word, new HashMap<>());
@@ -82,7 +86,7 @@ public class Main {
         System.out.println("Chosen: " + chosen);
 
         // sentences
-        String currentWord = "i";
+        String currentWord = "i drink";
 
         StringBuilder sentence = new StringBuilder(currentWord);
 
@@ -114,7 +118,9 @@ public class Main {
                 }
             }
             sentence.append(" ").append(nextWord);
-            currentWord = nextWord;
+
+            String[] contextParts = currentWord.split(" ");
+            currentWord = contextParts[1] + " " + nextWord;
         }
         System.out.println(sentence);
     }
