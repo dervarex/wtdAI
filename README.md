@@ -23,6 +23,11 @@ Wikipedia text is licensed under CC BY-SA 4.0.
 ## Running
 
 ```
-javac -d out src/main/java/com/dervarex/wtdai/Main.java
-java -cp out com.dervarex.wtdai.Main
+./gradlew run
+./gradlew run --args="--debug"
 ```
+
+Available arguments:
+
+- `--debug`: turns on debug output
+

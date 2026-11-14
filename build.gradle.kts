@@ -10,7 +10,7 @@ repositories {
 }
 
 dependencies {
-
+    implementation("io.github.dervarex.minified:minified-utils:4.0.4")
 }
 
 java {
