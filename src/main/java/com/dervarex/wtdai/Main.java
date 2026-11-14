@@ -2,20 +2,26 @@ package com.dervarex.wtdai;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
 
 public class Main {
     public static void main(String[] args) throws IOException {
-        String text = Files.readString(Paths.get("data.txt"));
+        StringBuilder corpus = new StringBuilder();
+        try (var files = Files.list(Paths.get("training-data"))) {
+            for (Path file : files.filter(p -> p.toString().endsWith(".txt")).sorted().toList()) {
+                corpus.append(Files.readString(file)).append("\n");
+            }
+        }
+        String text = corpus.toString();
 
+        text = text.replaceAll("(?m)^#--.*$", "");
         text = text.toLowerCase();
         text = text.replace(".", " <end> ");
         text = text.replace(",", "");
         text = text.replaceAll("\\[.*?\\]", "");
         text = text.replaceAll("[^a-z ]", " ");
-
-        String word = "artificial";
 
         String[] tokens = text.split("\\s+");
 
@@ -32,75 +38,37 @@ public class Main {
                     .merge(b, 1, Integer::sum);
         }
 
-        Map<String, Integer> nextWords = pairs.getOrDefault(word, new HashMap<>());
-
-        int totalOccurrences = 0;
-        for (int count : nextWords.values()) {
-            totalOccurrences += count;
-        }
-        System.out.println("Word: " + word + " | Total occurrences: " + totalOccurrences);
-
-        for (Map.Entry<String, Integer> entry : nextWords.entrySet()) {
-            String next = entry.getKey();
-            int count = entry.getValue();
-            double probability = (double) count / totalOccurrences;
-            System.out.println(next + ": "+ (probability*100) + "%");
-        }
-
-        String bestOne = null;
-        int highestCount =0;
-        for (Map.Entry<String, Integer> entry : nextWords.entrySet()) {
-            if(entry.getValue() > highestCount) {
-                highestCount = entry.getValue();
-                bestOne = entry.getKey();
-            }
-        }
-        System.out.println("Best word after "+ word + ": " + bestOne);
-
-        // sampling
-        Random random = new Random();
-        double randomValue = random.nextDouble();
-        double comulative = 0;
-        String chosen = null;
-
-        for (Map.Entry<String, Integer> entry : nextWords.entrySet()) {
-            double probability = (double) entry.getValue() / totalOccurrences;
-            comulative += probability;
-            if(randomValue < comulative) {
-                chosen = entry.getKey();
-                break;
-            }
-        }
-        System.out.println("Chosen: " + chosen);
-
-        // sentences
-        String currentWord = "artificial intelligence";
+        String currentWord = "java is";
         StringBuilder sentence = new StringBuilder(currentWord);
         Random sentenceRandom = new Random();
         for (int step = 0; step < 30; step++) {
-            Map<String, Integer> nextWords2 = pairs.get(currentWord);
+            Map<String, Integer> nextWords = pairs.get(currentWord);
 
-            if(nextWords2 == null || nextWords2.isEmpty()) {
-                nextWords2 = bigrams.get(currentWord.split(" ")[1]);
+            if(nextWords == null || nextWords.isEmpty()) {
+                nextWords = bigrams.get(currentWord.split(" ")[1]);
             }
 
-            if(nextWords2 == null || nextWords2.isEmpty()) {
+            if(nextWords == null || nextWords.isEmpty()) {
                 break;
             }
 
-            int totalOccurences = 0;
-            for (int count : nextWords2.values()) {
-                totalOccurences += count;
+            String[] words = sentence.toString().split(" ");
+            Set<String> recent = new HashSet<>(Arrays.asList(words).subList(Math.max(0, words.length - 4), words.length));
+
+            Map<String, Integer> fresh = new HashMap<>();
+            for (Map.Entry<String, Integer> entry : nextWords.entrySet()) {
+                if (!recent.contains(entry.getKey())) fresh.put(entry.getKey(), entry.getValue());
             }
+            if (fresh.isEmpty()) fresh = nextWords;
 
-            double diceRoll = sentenceRandom.nextDouble();
-            double runningTotal = 0;
+            int total = 0;
+            for (int count : fresh.values()) total += count;
+
+            int roll = sentenceRandom.nextInt(total);
             String nextWord = null;
-
-            for (Map.Entry<String, Integer> entry : nextWords2.entrySet()) {
-                double probability = (double) entry.getValue() / totalOccurences;
-                runningTotal += probability;
-                if(diceRoll < runningTotal) {
+            for (Map.Entry<String, Integer> entry : fresh.entrySet()) {
+                roll -= entry.getValue();
+                if (roll < 0) {
                     nextWord = entry.getKey();
                     break;
                 }
