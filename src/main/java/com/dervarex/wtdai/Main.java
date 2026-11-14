@@ -7,26 +7,26 @@ import java.util.Random;
 
 public class Main {
     public static void main(String[] args) {
-        String text = "i drink water i drink juice i like water i like juice " +
-                "you drink water you drink juice you like water you like juice " +
-                "we drink water we like juice we drink coffee " +
-                "i drink coffee i like coffee you like coffee " +
-                "the cat drinks water the cat likes juice " +
-                "the dog drinks water the dog likes bones " +
-                "i eat bread i eat apples you eat bread " +
-                "we eat apples and bread " +
-                "the cat eats fish the dog eats bones " +
-                "i like the cat i like the dog " +
-                "the cat drinks water and eats fish " +
-                "the dog drinks water and eats bones " +
-                "you and i drink water " +
-                "we like the cat and the dog " +
-                "i drink water every day " +
-                "you drink juice every day " +
-                "the cat sleeps the dog sleeps " +
-                "i sleep you sleep we sleep " +
-                "i like water and juice " +
-                "you like coffee and bread";
+        String text = "i drink water i drink juice i like water i like juice <END> " +
+                "you drink water you drink juice you like water you like juice <END> " +
+                "we drink water we like juice we drink coffee <END> " +
+                "i drink coffee i like coffee you like coffee <END> " +
+                "the cat drinks water the cat likes juice <END> " +
+                "the dog drinks water the dog likes bones <END> " +
+                "i eat bread i eat apples you eat bread <END> " +
+                "we eat apples and bread <END> " +
+                "the cat eats fish the dog eats bones <END> " +
+                "i like the cat i like the dog <END> " +
+                "the cat drinks water and eats fish <END> " +
+                "the dog drinks water and eats bones <END> " +
+                "you and i drink water <END> " +
+                "we like the cat and the dog <END> " +
+                "i drink water every day <END> " +
+                "you drink juice every day <END> " +
+                "the cat sleeps the dog sleeps <END> " +
+                "i sleep you sleep we sleep <END> " +
+                "i like water and juice <END> " +
+                "you like coffee and bread <END>";
         String word= "drink";
 
         String[] tokens = text.toLowerCase().split("\\s+");
