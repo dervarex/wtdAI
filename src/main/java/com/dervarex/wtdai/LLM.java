@@ -52,10 +52,10 @@ import java.util.*;
 public class LLM {
 
     static final int CONTEXT = 3; // previous words the model's gonna look at
-    static final int EMB = 16; // size of each word embedding
-    static final int HIDDEN = 64;// hidden layer size
-    static final int EPOCHS = 2;
-    static final double LR = 0.05;
+    static int EMB = 16; // size of each word embedding
+    static int HIDDEN = 64;// hidden layer size
+    static int EPOCHS = 2;
+    static double LR = 0.05;
 
     static double[][] emb;// vocab x EMB
     static double[][] w1; // (CONTEXT*EMB) x HIDDEN
@@ -63,7 +63,8 @@ public class LLM {
     static double[][] w2; // HIDDEN x vocab
     static double[] b2; // vocab
 
-    static final String SEED = "java is";
+    static String SEED = "java is";
+    static int SENTENCES = 3;
 
 
     /**
@@ -84,7 +85,7 @@ public class LLM {
 
         train(ids, index.size(), debug);
 
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < SENTENCES; i++) {
             System.out.println(Generator.generate(SEED, CONTEXT, index));
         }
     }

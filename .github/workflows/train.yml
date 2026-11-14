@@ -1,0 +1,48 @@
+name: train
+
+on:
+  workflow_dispatch:
+    inputs:
+      epochs:
+        description: Training passes over the text
+        default: "2"
+      emb:
+        description: Size of each word embedding
+        default: "16"
+      hidden:
+        description: Hidden layer size
+        default: "64"
+      lr:
+        description: Learning rate
+        default: "0.05"
+      sentences:
+        description: How many sentences to generate
+        default: "3"
+      seed:
+        description: Words to start each sentence with
+        default: "java is"
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 25
+          cache: gradle
+
+      - name: Train and generate
+        shell: bash
+        run: |
+          set -o pipefail
+          ./gradlew run --args="--debug --epochs ${{ inputs.epochs }} --emb ${{ inputs.emb }} --hidden ${{ inputs.hidden }} --lr ${{ inputs.lr }} --sentences ${{ inputs.sentences }} --seed '${{ inputs.seed }}'" | tee train.log
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: training-log
+          path: train.log

@@ -14,6 +14,12 @@ public class Main {
         parser.register("debug", () -> {
             debug.set(true);
         });
+        parser.register("epochs", (String v) -> LLM.EPOCHS = Integer.parseInt(v));
+        parser.register("emb", (String v) -> LLM.EMB = Integer.parseInt(v));
+        parser.register("hidden", (String v) -> LLM.HIDDEN = Integer.parseInt(v));
+        parser.register("lr", (String v) -> LLM.LR = Double.parseDouble(v));
+        parser.register("sentences", (String v) -> LLM.SENTENCES = Integer.parseInt(v));
+        parser.register("seed", (String v) -> LLM.SEED = v);
         parser.parse(args);
 
         try {
