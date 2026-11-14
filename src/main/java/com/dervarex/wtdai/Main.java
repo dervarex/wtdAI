@@ -20,12 +20,15 @@ public class Main {
         String[] tokens = text.split("\\s+");
 
         Map<String, Map<String, Integer>> pairs = new HashMap<>();
+        Map<String, Map<String, Integer>> bigrams = new HashMap<>();
 
         for(int i = 0; i < tokens.length - 2; i++) {
             String a = tokens[i] + " " + tokens[i + 1];
             String b = tokens[i + 2];
 
             pairs.computeIfAbsent(a, k -> new HashMap<String, Integer>())
+                    .merge(b, 1, Integer::sum);
+            bigrams.computeIfAbsent(tokens[i + 1], k -> new HashMap<String, Integer>())
                     .merge(b, 1, Integer::sum);
         }
 
@@ -78,6 +81,10 @@ public class Main {
             Map<String, Integer> nextWords2 = pairs.get(currentWord);
 
             if(nextWords2 == null || nextWords2.isEmpty()) {
+                nextWords2 = bigrams.get(currentWord.split(" ")[1]);
+            }
+
+            if(nextWords2 == null || nextWords2.isEmpty()) {
                 break;
             }
 
@@ -99,7 +106,7 @@ public class Main {
                 }
             }
 
-            if ("<end>".equals(nextWord)) {
+            if (nextWord == null || "<end>".equals(nextWord)) {
                 break;
             }
 
