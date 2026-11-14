@@ -61,5 +61,42 @@ public class Main {
             }
         }
         System.out.println("Chosen: " + chosen);
+
+        // sentences
+        String currentWord = "i";
+
+        StringBuilder sentence = new StringBuilder(currentWord);
+
+        Random sentenceRandom = new Random();
+
+        for (int step = 0; step < 10; step++) {
+            Map<String, Integer> nextWords2 = pairs.get(currentWord);
+
+            if(nextWords2 == null || nextWords2.isEmpty()) {
+                break;
+            }
+
+            int totalOccurences = 0;
+            for (int count : nextWords2.values()) {
+                totalOccurences += count;
+            }
+
+            double diceRoll = sentenceRandom.nextDouble();
+            double runningTotal = 0;
+            String nextWord = null;
+
+            for (Map.Entry<String, Integer> entry : nextWords2.entrySet()) {
+                double probability = (double) entry.getValue() / totalOccurences;
+
+                runningTotal += probability;
+                if(diceRoll < runningTotal) {
+                    nextWord = entry.getKey();
+                    break;
+                }
+            }
+            sentence.append(" ").append(nextWord);
+            currentWord = nextWord;
+        }
+        System.out.println(sentence);
     }
 }
