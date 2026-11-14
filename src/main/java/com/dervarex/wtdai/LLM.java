@@ -1,6 +1,7 @@
 package com.dervarex.wtdai;
 
 import java.io.IOException;
+import java.nio.file.Paths;
 import java.util.*;
 
 /**
@@ -65,6 +66,8 @@ public class LLM {
 
     static String SEED = "java is";
     static int SENTENCES = 3;
+    static String SAVE_PATH = null;
+    static String LOAD_PATH = null;
 
 
     /**
@@ -73,17 +76,29 @@ public class LLM {
      * @throws IOException if reading the training data fails
      */
     public static void start(boolean debug) throws IOException {
-        List<String> tokens = Tokenizer.tokenize(Tokenizer.readText());
-        Map<String, Integer> index = Vocabulary.buildVoc(tokens);
+        Map<String, Integer> index;
 
-        int[] ids = Vocabulary.encode(tokens, index);
+        if (LOAD_PATH != null) {
+            index = ModelIO.load(Paths.get(LOAD_PATH));
+            if (debug) System.out.println("loaded " + LOAD_PATH + ", vocab: " + index.size());
+        } else {
+            List<String> tokens = Tokenizer.tokenize(Tokenizer.readText());
+            index = Vocabulary.buildVoc(tokens);
 
-        if(debug) {
-            System.out.println("tokens: " + tokens.size());
-            System.out.println("vocab:  " + index.size());
+            int[] ids = Vocabulary.encode(tokens, index);
+
+            if(debug) {
+                System.out.println("tokens: " + tokens.size());
+                System.out.println("vocab:  " + index.size());
+            }
+
+            train(ids, index.size(), debug);
+
+            if (SAVE_PATH != null) {
+                ModelIO.save(Paths.get(SAVE_PATH), index);
+                if (debug) System.out.println("saved " + SAVE_PATH);
+            }
         }
-
-        train(ids, index.size(), debug);
 
         for (int i = 0; i < SENTENCES; i++) {
             System.out.println(Generator.generate(SEED, CONTEXT, index));

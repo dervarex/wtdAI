@@ -80,5 +80,15 @@ Arguments use the `--` prefix from `minified-utils`'s `Parser`:
 | `--lr X`         | 0.05      | Learning rate                                             |
 | `--sentences N`  | 3         | How many sentences to generate                            |
 | `--seed "words"` | `java is` | The words the sentence starts with                        |
+| `--save PATH`    | off       | Writes the trained model after training                   |
+| `--load PATH`    | off       | Skips training and loads the model                        |
+
+### Running it on your pc without training
+
+I'll release models alongside the source code on GitHub releases, you can load them like that:
+
+```
+./gradlew run --args="--load model.bin --sentences 5"
+```
 
 

@@ -20,6 +20,8 @@ public class Main {
         parser.register("lr", (String v) -> LLM.LR = Double.parseDouble(v));
         parser.register("sentences", (String v) -> LLM.SENTENCES = Integer.parseInt(v));
         parser.register("seed", (String v) -> LLM.SEED = v);
+        parser.register("save", (String v) -> LLM.SAVE_PATH = v);
+        parser.register("load", (String v) -> LLM.LOAD_PATH = v);
         parser.parse(args);
 
         try {

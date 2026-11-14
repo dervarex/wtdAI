@@ -39,10 +39,17 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          ./gradlew run --args="--debug --epochs ${{ inputs.epochs }} --emb ${{ inputs.emb }} --hidden ${{ inputs.hidden }} --lr ${{ inputs.lr }} --sentences ${{ inputs.sentences }} --seed '${{ inputs.seed }}'" | tee train.log
+          ./gradlew run --args="--debug --epochs ${{ inputs.epochs }} --emb ${{ inputs.emb }} --hidden ${{ inputs.hidden }} --lr ${{ inputs.lr }} --sentences ${{ inputs.sentences }} --seed '${{ inputs.seed }}' --save model.bin" | tee train.log
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: training-log
           path: train.log
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: model
+          path: model.bin
+          if-no-files-found: ignore
