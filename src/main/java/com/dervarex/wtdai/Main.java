@@ -1,36 +1,23 @@
 package com.dervarex.wtdai;
 
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Random;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.*;
 
 public class Main {
-    public static void main(String[] args) {
-        String text = "i drink water i drink juice i like water i like juice <END> " +
-                "you drink water you drink juice you like water you like juice <END> " +
-                "we drink water we like juice we drink coffee <END> " +
-                "i drink coffee i like coffee you like coffee <END> " +
-                "the cat drinks water the cat likes juice <END> " +
-                "the dog drinks water the dog likes bones <END> " +
-                "i eat bread i eat apples you eat bread <END> " +
-                "we eat apples and bread <END> " +
-                "the cat eats fish the dog eats bones <END> " +
-                "i like the cat i like the dog <END> " +
-                "the cat drinks water and eats fish <END> " +
-                "the dog drinks water and eats bones <END> " +
-                "you and i drink water <END> " +
-                "we like the cat and the dog <END> " +
-                "i drink water every day <END> " +
-                "you drink juice every day <END> " +
-                "the cat sleeps the dog sleeps <END> " +
-                "i sleep you sleep we sleep <END> " +
-                "i like water and juice <END> " +
-                "you like coffee and bread <END>";
-        String word= "drink";
+    public static void main(String[] args) throws IOException {
+        String text = Files.readString(Paths.get("data.txt"));
 
-        String[] tokens = text.toLowerCase().split("\\s+");
-        System.out.println("Tokens: " + Arrays.toString(tokens));
+        text = text.toLowerCase();
+        text = text.replace(".", " <end> ");
+        text = text.replace(",", "");
+        text = text.replaceAll("\\[.*?\\]", "");
+        text = text.replaceAll("[^a-z ]", " ");
+
+        String word = "artificial";
+
+        String[] tokens = text.split("\\s+");
 
         Map<String, Map<String, Integer>> pairs = new HashMap<>();
 
@@ -41,8 +28,6 @@ public class Main {
             pairs.computeIfAbsent(a, k -> new HashMap<String, Integer>())
                     .merge(b, 1, Integer::sum);
         }
-
-        System.out.println("Pairs: " + pairs);
 
         Map<String, Integer> nextWords = pairs.getOrDefault(word, new HashMap<>());
 
@@ -86,13 +71,10 @@ public class Main {
         System.out.println("Chosen: " + chosen);
 
         // sentences
-        String currentWord = "i drink";
-
+        String currentWord = "artificial intelligence";
         StringBuilder sentence = new StringBuilder(currentWord);
-
         Random sentenceRandom = new Random();
-
-        for (int step = 0; step < 10; step++) {
+        for (int step = 0; step < 30; step++) {
             Map<String, Integer> nextWords2 = pairs.get(currentWord);
 
             if(nextWords2 == null || nextWords2.isEmpty()) {
@@ -110,18 +92,23 @@ public class Main {
 
             for (Map.Entry<String, Integer> entry : nextWords2.entrySet()) {
                 double probability = (double) entry.getValue() / totalOccurences;
-
                 runningTotal += probability;
                 if(diceRoll < runningTotal) {
                     nextWord = entry.getKey();
                     break;
                 }
             }
+
+            if ("<end>".equals(nextWord)) {
+                break;
+            }
+
             sentence.append(" ").append(nextWord);
 
             String[] contextParts = currentWord.split(" ");
             currentWord = contextParts[1] + " " + nextWord;
         }
-        System.out.println(sentence);
+
+        System.out.println(sentence + ".");
     }
 }
