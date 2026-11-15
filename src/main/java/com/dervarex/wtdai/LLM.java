@@ -59,6 +59,7 @@ public class LLM {
     static double LR = 0.05;
     static int TEST_EVERY = 10; // every ..th article is held back for measuring perplexity (overfitting or not?)
     static int THREADS = 1; // training threads
+    static int BATCH = 1; // words per update
 
     static double[][] emb;// vocab x EMB
     static double[][] w1; // (CONTEXT*EMB) x HIDDEN
@@ -148,6 +149,7 @@ public class LLM {
      * @return the summed loss over the pass
      */
     static double trainEpoch(int[] ids, int split, double lr) {
+        if (BATCH > 1) return trainEpochBatched(ids, split, lr);
         double[] losses = new double[THREADS];
         Thread[] workers = new Thread[THREADS];
         for (int k = 0; k < THREADS; k++) {
@@ -170,6 +172,110 @@ public class LLM {
         }
         double total = 0;
         for (double l : losses) total += l;
+        return total;
+    }
+
+    /**
+     * Runs one time over the training text in tiny batches, needed for gpu port later
+     * @param ids whole text as word IDs
+     * @param count how many words to train on
+     * @param lr learning rate for this pass
+     * @return the summed loss over the pass
+     */
+    static double trainEpochBatched(int[] ids, int count, double lr) {
+        int vocab = b2.length;
+        int inDim = CONTEXT * EMB;
+        double total = 0;
+        for (int start = 0; start < count; start += BATCH) {
+            int n = Math.min(BATCH, count - start);
+
+            // inputs magic
+            double[][] x = new double[n][inDim];
+            int[][] ctx = new int[n][];
+            for (int b = 0; b < n; b++) {
+                ctx[b] = contextAt(ids, start + b);
+                for (int c = 0; c < CONTEXT; c++) {
+                    for (int e = 0; e < EMB; e++) x[b][c * EMB + e] = emb[ctx[b][c]][e];
+                }
+            }
+
+            // forward pass magic
+            double[][] h = new double[n][HIDDEN];
+            for (int b = 0; b < n; b++) {
+                for (int j = 0; j < HIDDEN; j++) {
+                    double s = b1[j];
+                    for (int k = 0; k < inDim; k++) s += x[b][k] * w1[k][j];
+                    h[b][j] = Math.tanh(s);
+                }
+            }
+            double[][] p = new double[n][vocab];
+            for (int b = 0; b < n; b++) {
+                for (int v = 0; v < vocab; v++) p[b][v] = b2[v];
+                for (int j = 0; j < HIDDEN; j++) {
+                    double hj = h[b][j];
+                    double[] w2row = w2[j];
+                    for (int v = 0; v < vocab; v++) p[b][v] += hj * w2row[v];
+                }
+                double max = Double.NEGATIVE_INFINITY;
+                for (int v = 0; v < vocab; v++) max = Math.max(max, p[b][v]);
+                double sum = 0;
+                for (int v = 0; v < vocab; v++) {
+                    p[b][v] = Math.exp(p[b][v] - max);
+                    sum += p[b][v];
+                }
+                for (int v = 0; v < vocab; v++) p[b][v] /= sum;
+                total += -Math.log(p[b][ids[start + b]] + 1e-12);
+                p[b][ids[start + b]] -= 1;
+                for (int v = 0; v < vocab; v++) p[b][v] /= n;
+            }
+
+            // gradient flowing back into the hidden layer
+            double[][] dh = new double[n][HIDDEN];
+            for (int b = 0; b < n; b++) {
+                for (int j = 0; j < HIDDEN; j++) {
+                    double s = 0;
+                    for (int v = 0; v < vocab; v++) s += w2[j][v] * p[b][v];
+                    dh[b][j] = s * (1 - h[b][j] * h[b][j]);
+                }
+            }
+
+            // gradient flowing back into the context embeddings
+            double[][] dx = new double[n][inDim];
+            for (int b = 0; b < n; b++) {
+                for (int k = 0; k < inDim; k++) {
+                    double s = 0;
+                    for (int j = 0; j < HIDDEN; j++) s += w1[k][j] * dh[b][j];
+                    dx[b][k] = s;
+                }
+            }
+
+            // weight updates
+            for (int b = 0; b < n; b++) {
+                for (int j = 0; j < HIDDEN; j++) {
+                    double scale = lr * h[b][j];
+                    double[] w2row = w2[j];
+                    for (int v = 0; v < vocab; v++) w2row[v] -= scale * p[b][v];
+                }
+                for (int v = 0; v < vocab; v++) b2[v] -= lr * p[b][v];
+            }
+            for (int b = 0; b < n; b++) {
+                for (int k = 0; k < inDim; k++) {
+                    double scale = lr * x[b][k];
+                    double[] w1row = w1[k];
+                    for (int j = 0; j < HIDDEN; j++) w1row[j] -= scale * dh[b][j];
+                }
+            }
+            for (int j = 0; j < HIDDEN; j++) {
+                double g = 0;
+                for (int b = 0; b < n; b++) g += dh[b][j];
+                b1[j] -= lr * g;
+            }
+            for (int b = 0; b < n; b++) {
+                for (int c = 0; c < CONTEXT; c++) {
+                    for (int e = 0; e < EMB; e++) emb[ctx[b][c]][e] -= lr * dx[b][c * EMB + e];
+                }
+            }
+        }
         return total;
     }
 

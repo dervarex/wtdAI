@@ -22,6 +22,7 @@ public class Main {
         parser.register("load", (String v) -> LLM.LOAD_PATH = v);
         parser.register("context", (String v) -> LLM.CONTEXT = Integer.parseInt(v));
         parser.register("threads", (String v) -> LLM.THREADS = Integer.parseInt(v));
+        parser.register("batch", (String v) -> LLM.BATCH = Integer.parseInt(v));
         parser.register("vocab", (String v) -> Vocabulary.MAX_VOCAB = Integer.parseInt(v));
         parser.parse(args);
 
