@@ -7,8 +7,6 @@ import java.nio.file.Paths;
 import java.util.*;
 
 /**
- * wtdAI - while(true) doAI;
- * <br><br>
  * What variable is what:
  *
  * <h2>Constants</h2>
