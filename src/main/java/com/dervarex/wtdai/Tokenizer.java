@@ -7,6 +7,12 @@ import java.nio.file.Paths;
 import java.util.*;
 
 public class Tokenizer {
+    public static List<Path> files() throws IOException {
+        try (var files = Files.list(Paths.get("training-data"))) {
+            return files.filter(p -> p.toString().endsWith(".txt")).sorted().toList();
+        }
+    }
+
     public static String readText() throws IOException {
         StringBuilder text = new StringBuilder();
         try (var files = Files.list(Paths.get("training-data"))) {

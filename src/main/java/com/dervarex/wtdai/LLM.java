@@ -1,6 +1,8 @@
 package com.dervarex.wtdai;
 
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
 
@@ -57,7 +59,7 @@ public class LLM {
     static int HIDDEN = 64;// hidden layer size
     static int EPOCHS = 2;
     static double LR = 0.05;
-    static double TEST_FRACTION = 0.05; // how much of the text to use
+    static int TEST_EVERY = 10; // every ..th article is held back for measuring perplexity (overfitting or not?)
     static int THREADS = 1; // training threads
 
     static double[][] emb;// vocab x EMB
@@ -84,17 +86,24 @@ public class LLM {
             index = ModelIO.load(Paths.get(LOAD_PATH));
             if (debug) System.out.println("loaded " + LOAD_PATH + ", vocab: " + index.size());
         } else {
-            List<String> tokens = Tokenizer.tokenize(Tokenizer.readText());
-            index = Vocabulary.buildVoc(tokens);
+            List<String> trainTokens = new ArrayList<>();
+            List<String> testTokens = new ArrayList<>();
+            List<Path> files = Tokenizer.files();
+            for (int i = 0; i < files.size(); i++) {
+                List<String> tokens = Tokenizer.tokenize(Files.readString(files.get(i)));
+                (i % TEST_EVERY == TEST_EVERY - 1 ? testTokens : trainTokens).addAll(tokens);
+            }
 
-            int[] ids = Vocabulary.encode(tokens, index);
+            index = Vocabulary.buildVoc(trainTokens);
+            int[] trainIds = Vocabulary.encode(trainTokens, index);
+            int[] testIds = Vocabulary.encode(testTokens, index);
 
             if(debug) {
-                System.out.println("tokens: " + tokens.size());
+                System.out.println("train tokens: " + trainTokens.size() + ", test tokens: " + testTokens.size());
                 System.out.println("vocab:  " + index.size());
             }
 
-            train(ids, index.size(), debug);
+            train(trainIds, testIds, index.size(), debug);
 
             if (SAVE_PATH != null) {
                 ModelIO.save(Paths.get(SAVE_PATH), index);
@@ -109,11 +118,12 @@ public class LLM {
 
     /**
      * Inits all weights randomly and runs the training
-     * @param ids the whole text encoded as an array of word IDs
+     * @param ids the training text encoded as an array of word IDs
+     * @param testIds the held back text
      * @param vocab the total number of unique words (size of the output layer)
      * @param debug debug mode? prints epoch average loss here
      */
-    static void train(int[] ids, int vocab, boolean debug) {
+    static void train(int[] ids, int[] testIds, int vocab, boolean debug) {
         Random rng = new Random(42);
         emb = randomMatrix(rng, vocab, EMB);
         w1 = randomMatrix(rng, CONTEXT * EMB, HIDDEN);
@@ -121,14 +131,13 @@ public class LLM {
         w2 = randomMatrix(rng, HIDDEN, vocab);
         b2 = new double[vocab];
 
-        int split = (int) (ids.length * (1 - TEST_FRACTION));
         for (int epoch = 0; epoch < EPOCHS; epoch++) {
             // the learning rate shrinks linearly, down to 10% by the last epoch
             double lr = LR * (1 - 0.9 * epoch / EPOCHS);
-            double total = trainEpoch(ids, split, lr);
+            double total = trainEpoch(ids, ids.length, lr);
             if (debug) {
                 System.out.printf("epoch %d, train loss %.4f, test perplexity %.2f%n",
-                        epoch + 1, total / split, perplexity(ids, split));
+                        epoch + 1, total / ids.length, perplexity(testIds, 0));
             }
         }
     }
