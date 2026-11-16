@@ -30,6 +30,9 @@ on:
       vocab:
         description: Number of words in the vocabulary
         default: "2000"
+      batch:
+        description: Words per weight update (1 = per-word-training)
+        default: "1"
 
 jobs:
   train:
@@ -48,7 +51,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          ./gradlew run --args="--debug --epochs ${{ inputs.epochs }} --emb ${{ inputs.emb }} --hidden ${{ inputs.hidden }} --lr ${{ inputs.lr }} --sentences ${{ inputs.sentences }} --seed '${{ inputs.seed }}' --context ${{ inputs.context }} --threads ${{ inputs.threads }} --vocab ${{ inputs.vocab }} --save model.bin" | tee train.log
+          ./gradlew run --args="--debug --epochs ${{ inputs.epochs }} --emb ${{ inputs.emb }} --hidden ${{ inputs.hidden }} --lr ${{ inputs.lr }} --sentences ${{ inputs.sentences }} --seed '${{ inputs.seed }}' --context ${{ inputs.context }} --threads ${{ inputs.threads }} --vocab ${{ inputs.vocab }} --batch ${{ inputs.batch }} --save model.bin" | tee train.log
 
       - uses: actions/upload-artifact@v4
         if: always()
