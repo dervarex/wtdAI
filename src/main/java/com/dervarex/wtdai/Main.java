@@ -29,6 +29,7 @@ public class Main {
             System.out.println("gpu check max diff: " + GpuMultiply.selfCheck());
             System.out.println("gpu logits check max diff: " + GpuMultiply.logitsCheck());
             System.out.println("gpu weights resident (1.0 = yes): " + GpuWeights.residencyCheck());
+            System.out.println("gpu batch ids wrong values (0 = okay): " + GpuGather.batchCheck());
             System.exit(0);
         });
         parser.parse(args);
