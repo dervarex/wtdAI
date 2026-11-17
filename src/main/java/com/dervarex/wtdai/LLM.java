@@ -60,6 +60,7 @@ public class LLM {
     static int TEST_EVERY = 10; // every ..th article is held back for measuring perplexity (overfitting or not?)
     static int THREADS = 1; // training threads
     static int BATCH = 1; // words per update
+    static boolean GPU = false; // compute the batch stuff on the GPU (you're gonna need tornadovm launcher for it)
 
     static float[] emb; // vocab x EMB one row per word
     static float[] w1; // (CONTEXT*EMB) x HIDDEN one row per input
@@ -213,12 +214,22 @@ public class LLM {
                 for (int j = 0; j < HIDDEN; j++) h[b][j] = (float) Math.tanh(h[b][j]);
             }
             float[][] p = new float[n][vocab];
+            float[] gpuLogits = null;
+            if (GPU) {
+                float[] hFlat = new float[n * HIDDEN];
+                for (int b = 0; b < n; b++) System.arraycopy(h[b], 0, hFlat, b * HIDDEN, HIDDEN);
+                gpuLogits = GpuMultiply.multiplyFlat(hFlat, n, HIDDEN, w2, vocab);
+            }
             for (int b = 0; b < n; b++) {
-                System.arraycopy(b2, 0, p[b], 0, vocab);
-                for (int j = 0; j < HIDDEN; j++) {
-                    float hj = h[b][j];
-                    int row = j * vocab;
-                    for (int v = 0; v < vocab; v++) p[b][v] += hj * w2[row + v];
+                if (gpuLogits != null) {
+                    for (int v = 0; v < vocab; v++) p[b][v] = b2[v] + gpuLogits[b * vocab + v];
+                } else {
+                    System.arraycopy(b2, 0, p[b], 0, vocab);
+                    for (int j = 0; j < HIDDEN; j++) {
+                        float hj = h[b][j];
+                        int row = j * vocab;
+                        for (int v = 0; v < vocab; v++) p[b][v] += hj * w2[row + v];
+                    }
                 }
                 float max = Float.NEGATIVE_INFINITY;
                 for (int v = 0; v < vocab; v++) max = Math.max(max, p[b][v]);

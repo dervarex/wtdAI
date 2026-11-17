@@ -7,6 +7,8 @@ import uk.ac.manchester.tornado.api.annotations.Parallel;
 import uk.ac.manchester.tornado.api.enums.DataTransferMode;
 import uk.ac.manchester.tornado.api.types.matrix.Matrix2DFloat;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Random;
 
 /**
@@ -14,6 +16,9 @@ import java.util.Random;
  * Only runs under the TornadoVM launcher
  */
 public class GpuMultiply {
+
+    // task graph and its device buffers per matrix shape
+    private static final Map<String, Object[]> CACHE = new HashMap<>();
 
     /**
      * Kernel: c = a * b
@@ -60,12 +65,25 @@ public class GpuMultiply {
      * @return the product as a row-major array of rows * cols values
      */
     public static float[] multiplyFlat(float[] a, int rows, int inner, float[] b, int cols) {
-        Matrix2DFloat ma = new Matrix2DFloat(rows, inner);
-        Matrix2DFloat mb = new Matrix2DFloat(inner, cols);
-        Matrix2DFloat mc = new Matrix2DFloat(rows, cols);
+        String key = rows + "x" + inner + "x" + cols;
+        Object[] cached = CACHE.get(key);
+        if (cached == null) {
+            Matrix2DFloat ma = new Matrix2DFloat(rows, inner);
+            Matrix2DFloat mb = new Matrix2DFloat(inner, cols);
+            Matrix2DFloat mc = new Matrix2DFloat(rows, cols);
+            TaskGraph tg = new TaskGraph("gpu")
+                    .transferToDevice(DataTransferMode.EVERY_EXECUTION, ma, mb)
+                    .task("cellProduct", GpuMultiply::cellProduct, ma, mb, mc, 0)
+                    .transferToHost(DataTransferMode.EVERY_EXECUTION, mc);
+            cached = new Object[]{ma, mb, mc, new TornadoExecutionPlan(tg.snapshot())};
+            CACHE.put(key, cached);
+        }
+        Matrix2DFloat ma = (Matrix2DFloat) cached[0];
+        Matrix2DFloat mb = (Matrix2DFloat) cached[1];
+        Matrix2DFloat mc = (Matrix2DFloat) cached[2];
         for (int i = 0; i < rows; i++) for (int j = 0; j < inner; j++) ma.set(i, j, a[i * inner + j]);
         for (int i = 0; i < inner; i++) for (int j = 0; j < cols; j++) mb.set(i, j, b[i * cols + j]);
-        multiply(ma, mb, mc);
+        ((TornadoExecutionPlan) cached[3]).execute();
         float[] out = new float[rows * cols];
         for (int i = 0; i < rows; i++) for (int j = 0; j < cols; j++) out[i * cols + j] = mc.get(i, j);
         return out;
