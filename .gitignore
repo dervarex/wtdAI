@@ -34,4 +34,4 @@ build
 
 raw/
 # TornadoVM install dir because appearantly that stuff doesn't ship via package or smth
-tornadowm-install/
+tornadovm-install/
