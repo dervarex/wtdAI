@@ -233,7 +233,7 @@ public class LLM {
                 }
                 float max = Float.NEGATIVE_INFINITY;
                 for (int v = 0; v < vocab; v++) max = Math.max(max, p[b][v]);
-                // exp in double, one conversion back to float per output
+                // exp in double
                 double sum = 0;
                 for (int v = 0; v < vocab; v++) {
                     expBuf[v] = Math.exp((double) (p[b][v] - max));

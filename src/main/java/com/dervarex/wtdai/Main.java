@@ -28,6 +28,7 @@ public class Main {
         parser.register("gpu-check", () -> {
             System.out.println("gpu check max diff: " + GpuMultiply.selfCheck());
             System.out.println("gpu logits check max diff: " + GpuMultiply.logitsCheck());
+            System.out.println("gpu weights resident (1.0 = yes): " + GpuWeights.residencyCheck());
             System.exit(0);
         });
         parser.parse(args);
