@@ -51,6 +51,52 @@ public class GpuMultiply {
     }
 
     /**
+     * Multiplies flat row major arrays on the GPU
+     * @param a left matrix, rows x inner
+     * @param rows rows of a
+     * @param inner columns of a, rows of b
+     * @param b right matrix, inner x cols
+     * @param cols columns of b
+     * @return the product as a row-major array of rows * cols values
+     */
+    public static float[] multiplyFlat(float[] a, int rows, int inner, float[] b, int cols) {
+        Matrix2DFloat ma = new Matrix2DFloat(rows, inner);
+        Matrix2DFloat mb = new Matrix2DFloat(inner, cols);
+        Matrix2DFloat mc = new Matrix2DFloat(rows, cols);
+        for (int i = 0; i < rows; i++) for (int j = 0; j < inner; j++) ma.set(i, j, a[i * inner + j]);
+        for (int i = 0; i < inner; i++) for (int j = 0; j < cols; j++) mb.set(i, j, b[i * cols + j]);
+        multiply(ma, mb, mc);
+        float[] out = new float[rows * cols];
+        for (int i = 0; i < rows; i++) for (int j = 0; j < cols; j++) out[i * cols + j] = mc.get(i, j);
+        return out;
+    }
+
+    /**
+     * Checks the flat multiply at the model's logits size (batch 256, hidden 64, vocab 2000)
+     * @return the largest difference between the GPU and the CPU result
+     */
+    public static double logitsCheck() {
+        int rows = 256, inner = 64, cols = 2000;
+        Random rng = new Random(2);
+        float[] h = new float[rows * inner];
+        float[] w2 = new float[inner * cols];
+        for (int i = 0; i < h.length; i++) h[i] = rng.nextFloat() - 0.5f;
+        for (int i = 0; i < w2.length; i++) w2[i] = rng.nextFloat() - 0.5f;
+
+        float[] gpu = multiplyFlat(h, rows, inner, w2, cols);
+
+        double maxDiff = 0;
+        for (int i = 0; i < rows; i++) {
+            for (int j = 0; j < cols; j++) {
+                float sum = 0f;
+                for (int t = 0; t < inner; t++) sum += h[i * inner + t] * w2[t * cols + j];
+                maxDiff = Math.max(maxDiff, Math.abs(gpu[i * cols + j] - sum));
+            }
+        }
+        return maxDiff;
+    }
+
+    /**
      * Checks the GPU result to a plain CPU loop on random matrices
      * @return the largest difference between the two results
      */

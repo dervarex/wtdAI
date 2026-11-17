@@ -26,6 +26,7 @@ public class Main {
         parser.register("vocab", (String v) -> Vocabulary.MAX_VOCAB = Integer.parseInt(v));
         parser.register("gpu-check", () -> {
             System.out.println("gpu check max diff: " + GpuMultiply.selfCheck());
+            System.out.println("gpu logits check max diff: " + GpuMultiply.logitsCheck());
             System.exit(0);
         });
         parser.parse(args);
