@@ -61,11 +61,11 @@ public class LLM {
     static int THREADS = 1; // training threads
     static int BATCH = 1; // words per update
 
-    static double[][] emb;// vocab x EMB
-    static double[][] w1; // (CONTEXT*EMB) x HIDDEN
-    static double[] b1; // HIDDEN
-    static double[][] w2; // HIDDEN x vocab
-    static double[] b2; // vocab
+    static float[] emb; // vocab x EMB one row per word
+    static float[] w1; // (CONTEXT*EMB) x HIDDEN one row per input
+    static float[] b1; // HIDDEN
+    static float[] w2; // HIDDEN x vocab one row per hidden neuron
+    static float[] b2; // vocab
 
     static String SEED = "java is";
     static int SENTENCES = 3;
@@ -120,15 +120,15 @@ public class LLM {
      * @param ids the training text encoded as an array of word IDs
      * @param testIds the held back text
      * @param vocab the total number of unique words (size of the output layer)
-     * @param debug debug mode? prints epoch average loss here
+     * @param debug debug mode? prints epoch average loss and test perplexity
      */
     static void train(int[] ids, int[] testIds, int vocab, boolean debug) {
         Random rng = new Random(42);
-        emb = randomMatrix(rng, vocab, EMB);
-        w1 = randomMatrix(rng, CONTEXT * EMB, HIDDEN);
-        b1 = new double[HIDDEN];
-        w2 = randomMatrix(rng, HIDDEN, vocab);
-        b2 = new double[vocab];
+        emb = randomArray(rng, vocab * EMB);
+        w1 = randomArray(rng, CONTEXT * EMB * HIDDEN);
+        b1 = new float[HIDDEN];
+        w2 = randomArray(rng, HIDDEN * vocab);
+        b2 = new float[vocab];
 
         for (int epoch = 0; epoch < EPOCHS; epoch++) {
             // the learning rate shrinks linearly, down to 10% by the last epoch
@@ -142,23 +142,23 @@ public class LLM {
     }
 
     /**
-     * Runs one pass over the training part of the text, split across {@link #THREADS} threads
+     * Runs one pass over the training text, split across {@link #THREADS} threads
      * @param ids whole text as word IDs
-     * @param split where the training part ends
+     * @param count how many words to train on
      * @param lr learning rate for this pass
      * @return the summed loss over the pass
      */
-    static double trainEpoch(int[] ids, int split, double lr) {
-        if (BATCH > 1) return trainEpochBatched(ids, split, lr);
+    static double trainEpoch(int[] ids, int count, double lr) {
+        if (BATCH > 1) return trainEpochBatched(ids, count, lr);
         double[] losses = new double[THREADS];
         Thread[] workers = new Thread[THREADS];
         for (int k = 0; k < THREADS; k++) {
             final int id = k;
-            final int from = (int) ((long) split * id / THREADS);
-            final int to = (int) ((long) split * (id + 1) / THREADS);
+            final int from = (int) ((long) count * id / THREADS);
+            final int to = (int) ((long) count * (id + 1) / THREADS);
             workers[k] = new Thread(() -> {
                 double sum = 0;
-                for (int t = from; t < to; t++) sum += step(contextAt(ids, t), ids[t], lr);
+                for (int t = from; t < to; t++) sum += step(contextAt(ids, t), ids[t], (float) lr);
                 losses[id] = sum;
             });
             workers[k].start();
@@ -176,75 +176,81 @@ public class LLM {
     }
 
     /**
-     * Runs one time over the training text in tiny batches, needed for gpu port later
+     * Runs one pass over the training text in mini-batches, one weight update per batch
      * @param ids whole text as word IDs
      * @param count how many words to train on
-     * @param lr learning rate for this pass
+     * @param lrD learning rate for this pass
      * @return the summed loss over the pass
      */
-    static double trainEpochBatched(int[] ids, int count, double lr) {
+    static double trainEpochBatched(int[] ids, int count, double lrD) {
+        float lr = (float) lrD;
         int vocab = b2.length;
         int inDim = CONTEXT * EMB;
         double total = 0;
+        double[] expBuf = new double[vocab];
         for (int start = 0; start < count; start += BATCH) {
             int n = Math.min(BATCH, count - start);
 
-            // inputs magic
-            double[][] x = new double[n][inDim];
+            // inputs: context embeddings, one row per word
+            float[][] x = new float[n][inDim];
             int[][] ctx = new int[n][];
             for (int b = 0; b < n; b++) {
                 ctx[b] = contextAt(ids, start + b);
                 for (int c = 0; c < CONTEXT; c++) {
-                    for (int e = 0; e < EMB; e++) x[b][c * EMB + e] = emb[ctx[b][c]][e];
+                    for (int e = 0; e < EMB; e++) x[b][c * EMB + e] = emb[ctx[b][c] * EMB + e];
                 }
             }
 
-            // forward pass magic
-            double[][] h = new double[n][HIDDEN];
+            // forward pass
+            float[][] h = new float[n][HIDDEN];
             for (int b = 0; b < n; b++) {
-                for (int j = 0; j < HIDDEN; j++) {
-                    double s = b1[j];
-                    for (int k = 0; k < inDim; k++) s += x[b][k] * w1[k][j];
-                    h[b][j] = Math.tanh(s);
+                System.arraycopy(b1, 0, h[b], 0, HIDDEN);
+                for (int k = 0; k < inDim; k++) {
+                    float xk = x[b][k];
+                    int row = k * HIDDEN;
+                    for (int j = 0; j < HIDDEN; j++) h[b][j] += xk * w1[row + j];
                 }
+                for (int j = 0; j < HIDDEN; j++) h[b][j] = (float) Math.tanh(h[b][j]);
             }
-            double[][] p = new double[n][vocab];
+            float[][] p = new float[n][vocab];
             for (int b = 0; b < n; b++) {
-                for (int v = 0; v < vocab; v++) p[b][v] = b2[v];
+                System.arraycopy(b2, 0, p[b], 0, vocab);
                 for (int j = 0; j < HIDDEN; j++) {
-                    double hj = h[b][j];
-                    double[] w2row = w2[j];
-                    for (int v = 0; v < vocab; v++) p[b][v] += hj * w2row[v];
+                    float hj = h[b][j];
+                    int row = j * vocab;
+                    for (int v = 0; v < vocab; v++) p[b][v] += hj * w2[row + v];
                 }
-                double max = Double.NEGATIVE_INFINITY;
+                float max = Float.NEGATIVE_INFINITY;
                 for (int v = 0; v < vocab; v++) max = Math.max(max, p[b][v]);
+                // exp in double, one conversion back to float per output
                 double sum = 0;
                 for (int v = 0; v < vocab; v++) {
-                    p[b][v] = Math.exp(p[b][v] - max);
-                    sum += p[b][v];
+                    expBuf[v] = Math.exp((double) (p[b][v] - max));
+                    sum += expBuf[v];
                 }
-                for (int v = 0; v < vocab; v++) p[b][v] /= sum;
+                for (int v = 0; v < vocab; v++) p[b][v] = (float) (expBuf[v] / sum);
                 total += -Math.log(p[b][ids[start + b]] + 1e-12);
                 p[b][ids[start + b]] -= 1;
-                for (int v = 0; v < vocab; v++) p[b][v] /= n;
+                float inv = 1f / n;
+                for (int v = 0; v < vocab; v++) p[b][v] *= inv;
             }
 
-            // gradient flowing back into the hidden layer
-            double[][] dh = new double[n][HIDDEN];
+            // gradients flowing back, calculated before weight changes
+            float[][] dh = new float[n][HIDDEN];
             for (int b = 0; b < n; b++) {
                 for (int j = 0; j < HIDDEN; j++) {
-                    double s = 0;
-                    for (int v = 0; v < vocab; v++) s += w2[j][v] * p[b][v];
+                    float s = 0;
+                    int row = j * vocab;
+                    for (int v = 0; v < vocab; v++) s += w2[row + v] * p[b][v];
                     dh[b][j] = s * (1 - h[b][j] * h[b][j]);
                 }
             }
-
-            // gradient flowing back into the context embeddings
-            double[][] dx = new double[n][inDim];
+            float[][] dx = new float[n][inDim];
             for (int b = 0; b < n; b++) {
                 for (int k = 0; k < inDim; k++) {
-                    double s = 0;
-                    for (int j = 0; j < HIDDEN; j++) s += w1[k][j] * dh[b][j];
+                    float s = 0;
+                    int row = k * HIDDEN;
+                    for (int j = 0; j < HIDDEN; j++) s += w1[row + j] * dh[b][j];
                     dx[b][k] = s;
                 }
             }
@@ -252,27 +258,27 @@ public class LLM {
             // weight updates
             for (int b = 0; b < n; b++) {
                 for (int j = 0; j < HIDDEN; j++) {
-                    double scale = lr * h[b][j];
-                    double[] w2row = w2[j];
-                    for (int v = 0; v < vocab; v++) w2row[v] -= scale * p[b][v];
+                    float scale = lr * h[b][j];
+                    int row = j * vocab;
+                    for (int v = 0; v < vocab; v++) w2[row + v] -= scale * p[b][v];
                 }
                 for (int v = 0; v < vocab; v++) b2[v] -= lr * p[b][v];
             }
             for (int b = 0; b < n; b++) {
                 for (int k = 0; k < inDim; k++) {
-                    double scale = lr * x[b][k];
-                    double[] w1row = w1[k];
-                    for (int j = 0; j < HIDDEN; j++) w1row[j] -= scale * dh[b][j];
+                    float scale = lr * x[b][k];
+                    int row = k * HIDDEN;
+                    for (int j = 0; j < HIDDEN; j++) w1[row + j] -= scale * dh[b][j];
                 }
             }
             for (int j = 0; j < HIDDEN; j++) {
-                double g = 0;
+                float g = 0;
                 for (int b = 0; b < n; b++) g += dh[b][j];
                 b1[j] -= lr * g;
             }
             for (int b = 0; b < n; b++) {
                 for (int c = 0; c < CONTEXT; c++) {
-                    for (int e = 0; e < EMB; e++) emb[ctx[b][c]][e] -= lr * dx[b][c * EMB + e];
+                    for (int e = 0; e < EMB; e++) emb[ctx[b][c] * EMB + e] -= lr * dx[b][c * EMB + e];
                 }
             }
         }
@@ -301,60 +307,65 @@ public class LLM {
      * @param lr learning rate for this step
      * @return the cross-entropy loss
      */
-    static double step(int[] ctx, int target, double lr) {
+    static double step(int[] ctx, int target, float lr) {
         int vocab = b2.length;
 
-        double[] x = new double[CONTEXT * EMB];
+        float[] x = new float[CONTEXT * EMB];
         for (int c = 0; c < CONTEXT; c++) {
-            for (int e = 0; e < EMB; e++) x[c * EMB + e] = emb[ctx[c]][e];
+            for (int e = 0; e < EMB; e++) x[c * EMB + e] = emb[ctx[c] * EMB + e];
         }
 
-        double[] h = new double[HIDDEN];
+        float[] h = new float[HIDDEN];
         for (int j = 0; j < HIDDEN; j++) {
-            double s = b1[j];
-            for (int k = 0; k < x.length; k++) s += x[k] * w1[k][j];
-            h[j] = Math.tanh(s);
+            float s = b1[j];
+            for (int k = 0; k < x.length; k++) s += x[k] * w1[k * HIDDEN + j];
+            h[j] = (float) Math.tanh(s);
         }
 
-        double[] p = new double[vocab];
-        double max = Double.NEGATIVE_INFINITY;
-        for (int v = 0; v < vocab; v++) {
-            double s = b2[v];
-            for (int j = 0; j < HIDDEN; j++) s += h[j] * w2[j][v];
-            p[v] = s;
-            max = Math.max(max, s);
+        float[] p = new float[vocab];
+        System.arraycopy(b2, 0, p, 0, vocab);
+        for (int j = 0; j < HIDDEN; j++) {
+            float hj = h[j];
+            int row = j * vocab;
+            for (int v = 0; v < vocab; v++) p[v] += hj * w2[row + v];
         }
-        double sum = 0;
+        float max = Float.NEGATIVE_INFINITY;
+        for (int v = 0; v < vocab; v++) max = Math.max(max, p[v]);
+        float sum = 0;
         for (int v = 0; v < vocab; v++) {
-            p[v] = Math.exp(p[v] - max);
+            p[v] = (float) Math.exp(p[v] - max);
             sum += p[v];
         }
         for (int v = 0; v < vocab; v++) p[v] /= sum;
         double loss = -Math.log(p[target] + 1e-12);
         p[target] -= 1;
 
-        double[] dh = new double[HIDDEN];
+        float[] dh = new float[HIDDEN];
         for (int j = 0; j < HIDDEN; j++) {
-            for (int v = 0; v < vocab; v++) dh[j] += w2[j][v] * p[v];
+            int row = j * vocab;
+            for (int v = 0; v < vocab; v++) dh[j] += w2[row + v] * p[v];
         }
         for (int j = 0; j < HIDDEN; j++) {
-            for (int v = 0; v < vocab; v++) w2[j][v] -= lr * h[j] * p[v];
+            float scale = lr * h[j];
+            int row = j * vocab;
+            for (int v = 0; v < vocab; v++) w2[row + v] -= scale * p[v];
         }
         for (int v = 0; v < vocab; v++) b2[v] -= lr * p[v];
 
         for (int j = 0; j < HIDDEN; j++) dh[j] *= 1 - h[j] * h[j];
 
-        double[] dx = new double[CONTEXT * EMB];
+        float[] dx = new float[CONTEXT * EMB];
         for (int k = 0; k < x.length; k++) {
+            int row = k * HIDDEN;
             for (int j = 0; j < HIDDEN; j++) {
-                dx[k] += w1[k][j] * dh[j];
-                w1[k][j] -= lr * x[k] * dh[j];
+                dx[k] += w1[row + j] * dh[j];
+                w1[row + j] -= lr * x[k] * dh[j];
             }
         }
         for (int j = 0; j < HIDDEN; j++) b1[j] -= lr * dh[j];
 
         for (int c = 0; c < CONTEXT; c++) {
-            for (int e = 0; e < EMB; e++) emb[ctx[c]][e] -= lr * dx[c * EMB + e];
+            for (int e = 0; e < EMB; e++) emb[ctx[c] * EMB + e] -= lr * dx[c * EMB + e];
         }
         return loss;
     }
@@ -375,17 +386,14 @@ public class LLM {
     }
 
     /**
-     * Creates a matrix filled with small random numbers.
+     * Creates an array filled with small random numbers.
      * @param rng random number generator
-     * @param rows how many rows the matrix should have
-     * @param cols how many columns the matrix should have
-     * @return a new matrix with random values
+     * @param size how many numbers
+     * @return a new array with random values
      */
-    static double[][] randomMatrix(Random rng, int rows, int cols) {
-        double[][] m = new double[rows][cols];
-        for (double[] row : m) {
-            for (int j = 0; j < cols; j++) row[j] = (rng.nextDouble() - 0.5) * 0.2;
-        }
-        return m;
+    static float[] randomArray(Random rng, int size) {
+        float[] a = new float[size];
+        for (int i = 0; i < size; i++) a[i] = (float) ((rng.nextDouble() - 0.5) * 0.2);
+        return a;
     }
 }

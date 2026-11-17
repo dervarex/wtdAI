@@ -27,11 +27,11 @@ public class ModelIO {
             out.writeInt(words.length);
             for (String w : words) out.writeUTF(w);
 
-            writeMatrix(out, LLM.emb);
-            writeMatrix(out, LLM.w1);
-            writeArray(out, LLM.b1);
-            writeMatrix(out, LLM.w2);
-            writeArray(out, LLM.b2);
+            writeFloats(out, LLM.emb);
+            writeFloats(out, LLM.w1);
+            writeFloats(out, LLM.b1);
+            writeFloats(out, LLM.w2);
+            writeFloats(out, LLM.b2);
         }
     }
 
@@ -54,36 +54,22 @@ public class ModelIO {
             Map<String, Integer> index = new LinkedHashMap<>();
             for (int i = 0; i < vocab; i++) index.put(in.readUTF(), i);
 
-            LLM.emb = readMatrix(in, vocab, LLM.EMB);
-            LLM.w1 = readMatrix(in, context * LLM.EMB, LLM.HIDDEN);
-            LLM.b1 = readArray(in, LLM.HIDDEN);
-            LLM.w2 = readMatrix(in, LLM.HIDDEN, vocab);
-            LLM.b2 = readArray(in, vocab);
+            LLM.emb = readFloats(in, vocab * LLM.EMB);
+            LLM.w1 = readFloats(in, context * LLM.EMB * LLM.HIDDEN);
+            LLM.b1 = readFloats(in, LLM.HIDDEN);
+            LLM.w2 = readFloats(in, LLM.HIDDEN * vocab);
+            LLM.b2 = readFloats(in, vocab);
             return index;
         }
     }
 
-    private static void writeMatrix(DataOutputStream out, double[][] m) throws IOException {
-        for (double[] row : m) {
-            for (double v : row) out.writeDouble(v);
-        }
+    private static void writeFloats(DataOutputStream out, float[] a) throws IOException {
+        for (float v : a) out.writeFloat(v);
     }
 
-    private static double[][] readMatrix(DataInputStream in, int rows, int cols) throws IOException {
-        double[][] m = new double[rows][cols];
-        for (int r = 0; r < rows; r++) {
-            for (int c = 0; c < cols; c++) m[r][c] = in.readDouble();
-        }
-        return m;
-    }
-
-    private static void writeArray(DataOutputStream out, double[] a) throws IOException {
-        for (double v : a) out.writeDouble(v);
-    }
-
-    private static double[] readArray(DataInputStream in, int length) throws IOException {
-        double[] a = new double[length];
-        for (int i = 0; i < length; i++) a[i] = in.readDouble();
+    private static float[] readFloats(DataInputStream in, int length) throws IOException {
+        float[] a = new float[length];
+        for (int i = 0; i < length; i++) a[i] = in.readFloat();
         return a;
     }
 }
