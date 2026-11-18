@@ -60,6 +60,7 @@ public class LLM {
     static int TEST_EVERY = 10; // every ..th article is held back for measuring perplexity (overfitting or not?)
     static int THREADS = 1; // training threads
     static int BATCH = 1; // words per update
+    static GpuTrainStep gpuStep; // the batch step on the card
     static boolean GPU = false; // compute the batch stuff on the GPU (you're gonna need tornadovm launcher for it)
 
     static float[] emb; // vocab x EMB one row per word
@@ -189,8 +190,26 @@ public class LLM {
         int inDim = CONTEXT * EMB;
         double total = 0;
         double[] expBuf = new double[vocab];
+        if (GPU) {
+            if (BATCH != GpuTrainStep.ROWS) throw new IllegalStateException("gpu needs --batch " + GpuTrainStep.ROWS);
+            if (gpuStep == null) gpuStep = new GpuTrainStep(emb, w1, b1, w2, b2);
+        }
         for (int start = 0; start < count; start += BATCH) {
             int n = Math.min(BATCH, count - start);
+
+            if (GPU) {
+                if (n == GpuTrainStep.ROWS) {
+                    int[] batchIds = new int[n * CONTEXT];
+                    int[] targets = new int[n];
+                    for (int b = 0; b < n; b++) {
+                        int[] ctx = contextAt(ids, start + b);
+                        System.arraycopy(ctx, 0, batchIds, b * CONTEXT, CONTEXT);
+                        targets[b] = ids[start + b];
+                    }
+                    gpuStep.run(batchIds, targets, lr);
+                }
+                continue;
+            }
 
             // inputs: context embeddings, one row per word
             float[][] x = new float[n][inDim];
@@ -214,22 +233,12 @@ public class LLM {
                 for (int j = 0; j < HIDDEN; j++) h[b][j] = (float) Math.tanh(h[b][j]);
             }
             float[][] p = new float[n][vocab];
-            float[] gpuLogits = null;
-            if (GPU) {
-                float[] hFlat = new float[n * HIDDEN];
-                for (int b = 0; b < n; b++) System.arraycopy(h[b], 0, hFlat, b * HIDDEN, HIDDEN);
-                gpuLogits = GpuMultiply.multiplyFlat(hFlat, n, HIDDEN, w2, vocab);
-            }
             for (int b = 0; b < n; b++) {
-                if (gpuLogits != null) {
-                    for (int v = 0; v < vocab; v++) p[b][v] = b2[v] + gpuLogits[b * vocab + v];
-                } else {
-                    System.arraycopy(b2, 0, p[b], 0, vocab);
-                    for (int j = 0; j < HIDDEN; j++) {
-                        float hj = h[b][j];
-                        int row = j * vocab;
-                        for (int v = 0; v < vocab; v++) p[b][v] += hj * w2[row + v];
-                    }
+                System.arraycopy(b2, 0, p[b], 0, vocab);
+                for (int j = 0; j < HIDDEN; j++) {
+                    float hj = h[b][j];
+                    int row = j * vocab;
+                    for (int v = 0; v < vocab; v++) p[b][v] += hj * w2[row + v];
                 }
                 float max = Float.NEGATIVE_INFINITY;
                 for (int v = 0; v < vocab; v++) max = Math.max(max, p[b][v]);
