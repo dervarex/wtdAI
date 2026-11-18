@@ -39,6 +39,7 @@ public class Main {
             System.out.println("gpu weight grad max diff: " + GpuWeightGrad.check());
             System.out.println("gpu update max diff: " + GpuUpdate.check());
             System.out.println("gpu context embedding wrong values (0 = ok): " + GpuEmbedding.check());
+            System.out.println("gpu embedding update max diff: " + GpuScatter.check());
             System.exit(0);
         });
         parser.parse(args);
