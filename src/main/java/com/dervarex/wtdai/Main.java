@@ -31,6 +31,7 @@ public class Main {
             System.out.println("gpu weights resident (1.0 = yes): " + GpuWeights.residencyCheck());
             System.out.println("gpu batch ids wrong values (0 = okay): " + GpuGather.batchCheck());
             System.out.println("gpu hidden tanh max diff: " + GpuActivation.hiddenCheck());
+            System.out.println("gpu hidden layer max diff: " + GpuHidden.check());
             System.exit(0);
         });
         parser.parse(args);
