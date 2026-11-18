@@ -32,6 +32,7 @@ public class Main {
             System.out.println("gpu batch ids wrong values (0 = okay): " + GpuGather.batchCheck());
             System.out.println("gpu hidden tanh max diff: " + GpuActivation.hiddenCheck());
             System.out.println("gpu hidden layer max diff: " + GpuHidden.check());
+            System.out.println("gpu row max wrong rows (0 = ok): " + GpuSoftmax.rowMaxCheck());
             System.exit(0);
         });
         parser.parse(args);
