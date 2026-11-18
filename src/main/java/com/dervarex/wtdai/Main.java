@@ -37,6 +37,7 @@ public class Main {
             System.out.println("gpu forward loss diff: " + GpuForward.check());
             System.out.println("gpu hidden grad max diff: " + GpuBackward.check());
             System.out.println("gpu weight grad max diff: " + GpuWeightGrad.check());
+            System.out.println("gpu update max diff: " + GpuUpdate.check());
             System.exit(0);
         });
         parser.parse(args);
