@@ -33,6 +33,7 @@ public class Main {
             System.out.println("gpu hidden tanh max diff: " + GpuActivation.hiddenCheck());
             System.out.println("gpu hidden layer max diff: " + GpuHidden.check());
             System.out.println("gpu row max wrong rows (0 = ok): " + GpuSoftmax.rowMaxCheck());
+            System.out.println("gpu softmax max diff: " + GpuSoftmax.softmaxCheck());
             System.exit(0);
         });
         parser.parse(args);
