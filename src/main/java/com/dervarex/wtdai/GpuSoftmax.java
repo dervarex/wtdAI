@@ -32,33 +32,43 @@ public class GpuSoftmax {
     }
 
     /**
-     * sums[i] = sum of exp(x - max) over row i
+     * ex[k] = exp(x[k] - max of its row)
      * @param x logits, ROWS * VOCAB
      * @param max one maximum per row
-     * @param sums one sum per row
-     * @param unused not used, but needed
+     * @param ex exp of every shifted logit, ROWS * VOCAB
+     * @param unused not used, but don't remove it pls, it's needed
      */
-    public static void rowSumExp(float[] x, float[] max, float[] sums, int unused) {
+    public static void expCells(float[] x, float[] max, float[] ex, int unused) {
+        for (@Parallel int k = 0; k < CELLS; k++) {
+            ex[k] = (float) Math.exp(x[k] - max[k / VOCAB]);
+        }
+    }
+
+    /**
+     * sums[i] = sum of the exp values in row i
+     * @param ex exp of every shifted logit, ROWS * VOCAB
+     * @param sums one sum per row
+     * @param unused1 not used, but needed
+     * @param unused2 not used, but needed
+     */
+    public static void rowSum(float[] ex, float[] sums, int unused1, int unused2) {
         for (@Parallel int i = 0; i < ROWS; i++) {
             float s = 0f;
-            for (int j = 0; j < VOCAB; j++) {
-                s += (float) Math.exp(x[i * VOCAB + j] - max[i]);
-            }
+            for (int j = 0; j < VOCAB; j++) s += ex[i * VOCAB + j];
             sums[i] = s;
         }
     }
 
     /**
-     * probs[k] = exp(x[k] - max of its row) / sum of its row
-     * @param x logits, ROWS * VOCAB
-     * @param max one maximum per row
+     * probs[k] = ex[k] / sum of its row
+     * @param ex exp of every shifted logit, ROWS * VOCAB
      * @param sums one sum per row
      * @param probs probabilities, ROWS x VOCAB
+     * @param unused not used, but don't remove pls
      */
-    public static void divide(float[] x, float[] max, float[] sums, float[] probs) {
+    public static void divide(float[] ex, float[] sums, float[] probs, int unused) {
         for (@Parallel int k = 0; k < CELLS; k++) {
-            int row = k / VOCAB;
-            probs[k] = (float) Math.exp(x[k] - max[row]) / sums[row];
+            probs[k] = ex[k] / sums[k / VOCAB];
         }
     }
 
@@ -69,14 +79,16 @@ public class GpuSoftmax {
      */
     public static float[] softmaxOnGpu(float[] x) {
         float[] max = new float[ROWS];
+        float[] ex = new float[CELLS];
         float[] sums = new float[ROWS];
         float[] probs = new float[CELLS];
         TaskGraph tg = new TaskGraph("softmax")
                 .transferToDevice(DataTransferMode.EVERY_EXECUTION, x)
-                .transferToDevice(DataTransferMode.FIRST_EXECUTION, max, sums)
+                .transferToDevice(DataTransferMode.FIRST_EXECUTION, max, ex, sums)
                 .task("rowMax", GpuSoftmax::rowMax, x, max, 0, 0)
-                .task("rowSumExp", GpuSoftmax::rowSumExp, x, max, sums, 0)
-                .task("divide", GpuSoftmax::divide, x, max, sums, probs)
+                .task("expCells", GpuSoftmax::expCells, x, max, ex, 0)
+                .task("rowSum", GpuSoftmax::rowSum, ex, sums, 0, 0)
+                .task("divide", GpuSoftmax::divide, ex, sums, probs, 0)
                 .transferToHost(DataTransferMode.EVERY_EXECUTION, probs);
         new TornadoExecutionPlan(tg.snapshot()).execute();
         return probs;

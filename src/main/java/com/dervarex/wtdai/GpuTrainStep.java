@@ -103,7 +103,7 @@ public class GpuTrainStep {
      */
     public static void inputGrad(float[] dpre, float[] w1, float[] dx, int unused) {
         for (@Parallel int r = 0; r < ROWS; r++) {
-            for (int k = 0; k < INNER; k++) {
+            for (@Parallel int k = 0; k < INNER; k++) {
                 float sum = 0f;
                 for (int t = 0; t < HIDDEN; t++) sum += dpre[r * HIDDEN + t] * w1[k * HIDDEN + t];
                 dx[r * INNER + k] = sum;
@@ -148,10 +148,11 @@ public class GpuTrainStep {
         float[] h = new float[ROWS * HIDDEN];
         float[] logits = new float[CELLS];
         float[] max = new float[ROWS];
-        float[] sums = new float[ROWS];
+        float[] ex = new float[CELLS];
         float[] probs = new float[CELLS];
-        float[] dl = new float[CELLS];
+        float[] sums = new float[ROWS];
         float[] dh = new float[ROWS * HIDDEN];
+        float[] dl = new float[CELLS];
         float[] dpre = new float[ROWS * HIDDEN];
         float[] gw1 = new float[INNER * HIDDEN];
         float[] gb1 = new float[HIDDEN];
@@ -162,15 +163,16 @@ public class GpuTrainStep {
         TaskGraph tg = new TaskGraph("trainStep")
                 .transferToDevice(DataTransferMode.FIRST_EXECUTION, emb, w1, b1, w2, b2)
                 .transferToDevice(DataTransferMode.EVERY_EXECUTION, ids, targets, lr)
-                .transferToDevice(DataTransferMode.FIRST_EXECUTION, x, pre, h, logits, max, sums, probs,
+                .transferToDevice(DataTransferMode.FIRST_EXECUTION, x, pre, h, logits, max, ex, sums, probs,
                         dl, dh, dpre, gw1, gb1, gw2, gb2, dx)
                 .task("gather", GpuTrainStep::getContext, ids, emb, x, 0)
                 .task("hiddenProduct", GpuHidden::hiddenProduct, x, w1, pre, 0)
                 .task("biasTanh", GpuActivation::biasTanh, pre, b1, h, HIDDEN)
                 .task("logitsProduct", GpuForward::logitsProduct, h, w2, logits, b2)
                 .task("rowMax", GpuSoftmax::rowMax, logits, max, 0, 0)
-                .task("rowSumExp", GpuSoftmax::rowSumExp, logits, max, sums, 0)
-                .task("divide", GpuSoftmax::divide, logits, max, sums, probs)
+                .task("expCells", GpuSoftmax::expCells, logits, max, ex, 0)
+                .task("rowSum", GpuSoftmax::rowSum, ex, sums, 0, 0)
+                .task("divide", GpuSoftmax::divide, ex, sums, probs, 0)
                 .task("gradLogits", GpuTrainStep::gradLogits, probs, targets, dl, 0)
                 .task("hiddenGrad", GpuBackward::hiddenGrad, dl, w2, dh, 0)
                 .task("gradHidden", GpuTrainStep::gradHidden, dh, h, dpre, 0)

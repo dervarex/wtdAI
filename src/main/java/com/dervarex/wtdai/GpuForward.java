@@ -24,6 +24,7 @@ public class GpuForward {
     private final float[] h;
     private final float[] logits;
     private final float[] max;
+    private final float[] ex;
     private final float[] sums;
     private final float[] probs;
 
@@ -46,18 +47,20 @@ public class GpuForward {
         this.h = new float[ROWS * HIDDEN];
         this.logits = new float[ROWS * VOCAB];
         this.max = new float[ROWS];
+        this.ex = new float[ROWS * VOCAB];
         this.sums = new float[ROWS];
         this.probs = new float[ROWS * VOCAB];
         TaskGraph tg = new TaskGraph("forward")
                 .transferToDevice(DataTransferMode.FIRST_EXECUTION, w1, b1, w2, b2)
                 .transferToDevice(DataTransferMode.EVERY_EXECUTION, x)
-                .transferToDevice(DataTransferMode.FIRST_EXECUTION, pre, h, logits, max, sums)
+                .transferToDevice(DataTransferMode.FIRST_EXECUTION, pre, h, logits, max, ex, sums)
                 .task("hiddenProduct", GpuHidden::hiddenProduct, x, w1, pre, 0)
                 .task("biasTanh", GpuActivation::biasTanh, pre, b1, h, HIDDEN)
                 .task("logitsProduct", GpuForward::logitsProduct, h, w2, logits, b2)
                 .task("rowMax", GpuSoftmax::rowMax, logits, max, 0, 0)
-                .task("rowSumExp", GpuSoftmax::rowSumExp, logits, max, sums, 0)
-                .task("divide", GpuSoftmax::divide, logits, max, sums, probs)
+                .task("expCells", GpuSoftmax::expCells, logits, max, ex, 0)
+                .task("rowSum", GpuSoftmax::rowSum, ex, sums, 0, 0)
+                .task("divide", GpuSoftmax::divide, ex, sums, probs, 0)
                 .transferToHost(DataTransferMode.EVERY_EXECUTION, probs);
         this.plan = new TornadoExecutionPlan(tg.snapshot());
     }
