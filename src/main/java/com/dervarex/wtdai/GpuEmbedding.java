@@ -44,7 +44,7 @@ public class GpuEmbedding {
         TaskGraph tg = new TaskGraph("embedding")
                 .transferToDevice(DataTransferMode.FIRST_EXECUTION, emb)
                 .transferToDevice(DataTransferMode.EVERY_EXECUTION, ids)
-                .task("gatherContext", GpuEmbedding::gatherContext, ids, emb, out, 0)
+                .task("getContext", GpuEmbedding::gatherContext, ids, emb, out, 0)
                 .transferToHost(DataTransferMode.EVERY_EXECUTION, out);
         new TornadoExecutionPlan(tg.snapshot()).execute();
 
