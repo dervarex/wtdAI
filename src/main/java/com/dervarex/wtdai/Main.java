@@ -35,6 +35,7 @@ public class Main {
             System.out.println("gpu row max wrong rows (0 = ok): " + GpuSoftmax.rowMaxCheck());
             System.out.println("gpu softmax max diff: " + GpuSoftmax.softmaxCheck());
             System.out.println("gpu forward loss diff: " + GpuForward.check());
+            System.out.println("gpu hidden grad max diff: " + GpuBackward.check());
             System.exit(0);
         });
         parser.parse(args);

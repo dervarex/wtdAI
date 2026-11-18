@@ -17,7 +17,6 @@ import java.util.Random;
  */
 public class GpuMultiply {
 
-    // task graph and its device buffers per matrix shape
     private static final Map<String, Object[]> CACHE = new HashMap<>();
 
     /**
@@ -41,7 +40,7 @@ public class GpuMultiply {
     }
 
     /**
-     * Multiplies two matrices on the GPU and copies the result back
+     * Multiplies two matrices on the GPU and copies back the result it gives us
      * @param a left matrix
      * @param b right matrix
      * @param c output matrix, overwritten
@@ -62,7 +61,7 @@ public class GpuMultiply {
      * @param inner columns of a, rows of b
      * @param b right matrix, inner x cols
      * @param cols columns of b
-     * @return the product as a row-major array of rows * cols values
+     * @return the product as a row major array of rows * cols values
      */
     public static float[] multiplyFlat(float[] a, int rows, int inner, float[] b, int cols) {
         String key = rows + "x" + inner + "x" + cols;
@@ -90,8 +89,7 @@ public class GpuMultiply {
     }
 
     /**
-     * Checks the flat multiply at the model's logits size (batch 256, hidden 64, vocab 2000)
-     * @return the largest difference between the GPU and the CPU result
+     * @return the largest difference between GPU and CPU result
      */
     public static double logitsCheck() {
         int rows = 256, inner = 64, cols = 2000;
@@ -115,7 +113,7 @@ public class GpuMultiply {
     }
 
     /**
-     * Checks the GPU result to a plain CPU loop on random matrices
+     * Checks the GPU result to plain CPU loop on random matrices
      * @return the largest difference between the two results
      */
     public static double selfCheck() {
