@@ -10,7 +10,8 @@ import uk.ac.manchester.tornado.api.enums.DataTransferMode;
  */
 public class GpuTrainStep {
 
-    static final int ROWS = 256, CONTEXT = 3, EMB = 16, INNER = CONTEXT * EMB, HIDDEN = 64, VOCAB = 2000;
+    static final int ROWS = GpuShape.ROWS, CONTEXT = GpuShape.CONTEXT, EMB = GpuShape.EMB, INNER = GpuShape.INNER,
+            HIDDEN = GpuShape.HIDDEN, VOCAB = GpuShape.VOCAB;
     static final int CELLS = ROWS * VOCAB;
 
     private final int[] ids = new int[ROWS * CONTEXT];

@@ -12,7 +12,7 @@ import java.util.Random;
  */
 public class GpuHidden {
 
-    static final int ROWS = 256, INNER = 48, COLS = 64;
+    static final int ROWS = GpuShape.ROWS, INNER = GpuShape.INNER, COLS = GpuShape.HIDDEN;
 
     private final int rows, inner, cols;
     private final float[] w1, b1, x, pre, h;

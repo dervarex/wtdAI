@@ -12,7 +12,7 @@ import java.util.Random;
  */
 public class GpuSoftmax {
 
-    static final int ROWS = 256, VOCAB = 2000, CELLS = ROWS * VOCAB;
+    static final int ROWS = GpuShape.ROWS, VOCAB = GpuShape.VOCAB, CELLS = ROWS * VOCAB;
 
     /**
      * out[i] = largest value in row i

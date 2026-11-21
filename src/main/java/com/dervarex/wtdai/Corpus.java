@@ -32,10 +32,11 @@ public class Corpus {
      * Reads the files, builds the vocabulary from the training part and encodes everything
      * @param files the training data files, see {@link Tokenizer#files()}
      * @param testEvery every ..th file is held back as test text
+     * @param vocabulary use this vocabulary instead of building one (when resuming a model), or null
      * @return the encoded text and vocabulary
      * @throws IOException if reading a file fails
      */
-    static Corpus read(List<Path> files, int testEvery) throws IOException {
+    static Corpus read(List<Path> files, int testEvery, Map<String, Integer> vocabulary) throws IOException {
         Map<String, Integer> seen = new HashMap<>();
         IntList counts = new IntList();
         IntList train = new IntList();
@@ -63,7 +64,7 @@ public class Corpus {
             int c = counts.data[e.getValue()];
             if (c > 0) trainCounts.put(e.getKey(), c);
         }
-        Map<String, Integer> index = Vocabulary.buildVoc(trainCounts);
+        Map<String, Integer> index = vocabulary != null ? vocabulary : Vocabulary.buildVoc(trainCounts);
 
         int unk = index.get(Vocabulary.UNK);
         int[] remap = new int[counts.size];

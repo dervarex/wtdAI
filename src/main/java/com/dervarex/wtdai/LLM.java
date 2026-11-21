@@ -71,6 +71,7 @@ public class LLM {
     static int SENTENCES = 3;
     static String SAVE_PATH = null;
     static String LOAD_PATH = null;
+    static String RESUME_PATH = null;
 
 
     /**
@@ -82,10 +83,21 @@ public class LLM {
         Map<String, Integer> index;
 
         if (LOAD_PATH != null) {
-            index = ModelIO.load(Paths.get(LOAD_PATH));
+            index = ModelIO.load(Paths.get(LOAD_PATH)).index();
             if (debug) System.out.println("loaded " + LOAD_PATH + ", vocab: " + index.size());
         } else {
-            Corpus corpus = Corpus.read(Tokenizer.files(), TEST_EVERY);
+            Map<String, Integer> vocabulary = null;
+            int done = 0;
+            if (RESUME_PATH != null) {
+                ModelIO.Model model = ModelIO.load(Paths.get(RESUME_PATH));
+                vocabulary = model.index();
+                done = model.epochs();
+                if (SAVE_PATH == null) SAVE_PATH = RESUME_PATH;
+                if (debug) System.out.println("resuming " + RESUME_PATH + " after epoch " + done + ", vocab: " + vocabulary.size()
+                        + ", context " + CONTEXT + ", emb " + EMB + ", hidden " + HIDDEN);
+            }
+
+            Corpus corpus = Corpus.read(Tokenizer.files(), TEST_EVERY, vocabulary);
             index = corpus.index;
 
             if(debug) {
@@ -93,12 +105,8 @@ public class LLM {
                 System.out.println("vocab:  " + index.size());
             }
 
-            train(corpus.train, corpus.test, index.size(), debug);
-
-            if (SAVE_PATH != null) {
-                ModelIO.save(Paths.get(SAVE_PATH), index);
-                if (debug) System.out.println("saved " + SAVE_PATH);
-            }
+            if (RESUME_PATH == null) initWeights(index.size());
+            train(corpus.train, corpus.test, index, done, debug);
         }
 
         for (int i = 0; i < SENTENCES; i++) {
@@ -107,27 +115,42 @@ public class LLM {
     }
 
     /**
-     * Inits all weights randomly and runs the training
-     * @param ids the training text encoded as an array of word IDs
-     * @param testIds the held back text
+     * Fills all weights with small random numbers
      * @param vocab the total number of unique words (size of the output layer)
-     * @param debug debug mode? prints epoch average loss and test perplexity
      */
-    static void train(int[] ids, int[] testIds, int vocab, boolean debug) {
+    static void initWeights(int vocab) {
         Random rng = new Random(42);
         emb = randomArray(rng, vocab * EMB);
         w1 = randomArray(rng, CONTEXT * EMB * HIDDEN);
         b1 = new float[HIDDEN];
         w2 = randomArray(rng, HIDDEN * vocab);
         b2 = new float[vocab];
+    }
 
-        for (int epoch = 0; epoch < EPOCHS; epoch++) {
+    /**
+     * Runs the training from {@code startEpoch} up to {@link #EPOCHS}
+     * @param ids the training text
+     * @param testIds the held back text
+     * @param index the vocabulary
+     * @param startEpoch how many epochs the model already has (0 for a new one)
+     * @param debug debug mode? prints epoch average loss and test perplexity
+     * @throws IOException if saving fails
+     */
+    static void train(int[] ids, int[] testIds, Map<String, Integer> index, int startEpoch, boolean debug) throws IOException {
+        if (startEpoch >= EPOCHS) {
+            System.out.println("the model already has " + startEpoch + " epochs, use --epochs with more than that to keep training");
+        }
+        for (int epoch = startEpoch; epoch < EPOCHS; epoch++) {
             // the learning rate shrinks linearly, down to 10% by the last epoch
             double lr = LR * (1 - 0.9 * epoch / EPOCHS);
             double total = trainEpoch(ids, ids.length, lr);
             if (debug) {
                 System.out.printf("epoch %d, train loss %.4f, test perplexity %.2f%n",
                         epoch + 1, total / ids.length, perplexity(testIds, 0));
+            }
+            if (SAVE_PATH != null) {
+                ModelIO.save(Paths.get(SAVE_PATH), index, epoch + 1);
+                if (debug) System.out.println("saved " + SAVE_PATH + " after epoch " + (epoch + 1));
             }
         }
     }
@@ -295,18 +318,39 @@ public class LLM {
     }
 
     /**
-     * Measures how well the model predicts the held back part of the text
+     * Measures how well the model predicts the held back part of the text, split across {@link #THREADS} threads
      * @param ids whole text as word IDs
      * @param from where the held back part starts
      * @return the perplexity, lower is better
      */
     static double perplexity(int[] ids, int from) {
-        double nll = 0;
-        for (int t = from; t < ids.length; t++) {
-            double p = Generator.predict(contextAt(ids, t), CONTEXT)[ids[t]];
-            nll -= Math.log(p + 1e-12);
+        double[] nll = new double[THREADS];
+        Thread[] workers = new Thread[THREADS];
+        int count = ids.length - from;
+        for (int k = 0; k < THREADS; k++) {
+            final int id = k;
+            final int start = from + (int) ((long) count * id / THREADS);
+            final int end = from + (int) ((long) count * (id + 1) / THREADS);
+            workers[k] = new Thread(() -> {
+                double sum = 0;
+                for (int t = start; t < end; t++) {
+                    double p = Generator.predict(contextAt(ids, t), CONTEXT)[ids[t]];
+                    sum -= Math.log(p + 1e-12);
+                }
+                nll[id] = sum;
+            });
+            workers[k].start();
         }
-        return Math.exp(nll / (ids.length - from));
+        for (Thread w : workers) {
+            try {
+                w.join();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+        double total = 0;
+        for (double v : nll) total += v;
+        return Math.exp(total / count);
     }
 
     /**

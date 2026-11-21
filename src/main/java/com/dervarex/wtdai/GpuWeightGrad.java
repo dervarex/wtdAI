@@ -12,7 +12,7 @@ import java.util.Random;
  */
 public class GpuWeightGrad {
 
-    static final int ROWS = 256, INNER = 48, HIDDEN = 64, VOCAB = 2000;
+    static final int ROWS = GpuShape.ROWS, INNER = GpuShape.INNER, HIDDEN = GpuShape.HIDDEN, VOCAB = GpuShape.VOCAB;
 
     /**
      * gw2 = h transposed * dlogits

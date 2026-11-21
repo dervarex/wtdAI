@@ -12,7 +12,7 @@ import java.util.Random;
  */
 public class GpuBackward {
 
-    static final int ROWS = 256, HIDDEN = 64, VOCAB = 2000;
+    static final int ROWS = GpuShape.ROWS, HIDDEN = GpuShape.HIDDEN, VOCAB = GpuShape.VOCAB;
 
     /**
      * dh = dlogits * w2 transposed, so dh[i][t] = sum over j of dlogits[i][j] * w2[t][j]

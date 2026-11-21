@@ -21,6 +21,7 @@ public class Main {
         parser.register("seed", (String v) -> LLM.SEED = v);
         parser.register("save", (String v) -> LLM.SAVE_PATH = v);
         parser.register("load", (String v) -> LLM.LOAD_PATH = v);
+        parser.register("resume", (String v) -> LLM.RESUME_PATH = v);
         parser.register("context", (String v) -> LLM.CONTEXT = Integer.parseInt(v));
         parser.register("threads", (String v) -> LLM.THREADS = Integer.parseInt(v));
         parser.register("batch", (String v) -> LLM.BATCH = Integer.parseInt(v));

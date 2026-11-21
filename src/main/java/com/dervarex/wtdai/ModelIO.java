@@ -3,21 +3,35 @@ package com.dervarex.wtdai;
 import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.*;
 
 /**
  * Saves and loads a trained model, so training can run on actions instead of frying my machine
  */
 public class ModelIO {
+    static final int FORMAT = -2; // negative, old files start with the context size, so they still load
+
+    /**
+     * A loaded model
+     * @param index the vocabulary, word to ID
+     * @param epochs how many epochs it was trained, 0 for old files
+     */
+    record Model(Map<String, Integer> index, int epochs) {
+    }
 
     /**
      * Writes the model to a file
      * @param path where to write the model
      * @param index the vocabulary, word to ID
+     * @param epochs how many epochs the model has been trained
      * @throws IOException if the file can't be written
      */
-    public static void save(Path path, Map<String, Integer> index) throws IOException {
-        try (DataOutputStream out = new DataOutputStream(new BufferedOutputStream(Files.newOutputStream(path)))) {
+    public static void save(Path path, Map<String, Integer> index, int epochs) throws IOException {
+        Path part = path.resolveSibling(path.getFileName() + ".part");
+        try (DataOutputStream out = new DataOutputStream(new BufferedOutputStream(Files.newOutputStream(part)))) {
+            out.writeInt(FORMAT);
+            out.writeInt(epochs);
             out.writeInt(LLM.CONTEXT);
             out.writeInt(LLM.EMB);
             out.writeInt(LLM.HIDDEN);
@@ -33,20 +47,24 @@ public class ModelIO {
             writeFloats(out, LLM.w2);
             writeFloats(out, LLM.b2);
         }
+        Files.move(part, path, StandardCopyOption.REPLACE_EXISTING);
     }
 
     /**
      * Reads a model file and loads it
      * @param path the model file to read
-     * @return the vocabulary, word to ID
-     * @throws IOException if the file can't be read or was saved with another context size
+     * @return the vocabulary and how many epochs it was trained
+     * @throws IOException if the file can't be read
      */
-    public static Map<String, Integer> load(Path path) throws IOException {
+    public static Model load(Path path) throws IOException {
         try (DataInputStream in = new DataInputStream(new BufferedInputStream(Files.newInputStream(path)))) {
-            int context = in.readInt();
-            if (context != LLM.CONTEXT) {
-                throw new IOException("model was saved with context " + context + ", expected " + LLM.CONTEXT);
+            int first = in.readInt();
+            int epochs = 0;
+            if (first == FORMAT) {
+                epochs = in.readInt();
+                first = in.readInt();
             }
+            LLM.CONTEXT = first;
             LLM.EMB = in.readInt();
             LLM.HIDDEN = in.readInt();
 
@@ -55,11 +73,11 @@ public class ModelIO {
             for (int i = 0; i < vocab; i++) index.put(in.readUTF(), i);
 
             LLM.emb = readFloats(in, vocab * LLM.EMB);
-            LLM.w1 = readFloats(in, context * LLM.EMB * LLM.HIDDEN);
+            LLM.w1 = readFloats(in, LLM.CONTEXT * LLM.EMB * LLM.HIDDEN);
             LLM.b1 = readFloats(in, LLM.HIDDEN);
             LLM.w2 = readFloats(in, LLM.HIDDEN * vocab);
             LLM.b2 = readFloats(in, vocab);
-            return index;
+            return new Model(index, epochs);
         }
     }
 

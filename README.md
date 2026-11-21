@@ -57,8 +57,9 @@ Arguments use the `--` prefix from `minified-utils`'s `Parser`:
 | `--lr X`         | 0.05      | Learning rate                                             |
 | `--sentences N`  | 3         | How many sentences to generate                            |
 | `--seed "words"` | `java is` | The words the sentence starts with                        |
-| `--save PATH`    | off       | Writes the trained model after training                   |
+| `--save PATH`    | off       | Writes the trained model after every epoch                |
 | `--load PATH`    | off       | Skips training and loads the model                        |
+| `--resume PATH`  | off       | Keeps training a saved model up to `--epochs`|
 | `--data PATH`    | `training-data` | Folder with the training data `.txt` files          |
 | `--max-words N`  | all       | Only reads files until it has this many words             |
 
