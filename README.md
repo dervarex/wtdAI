@@ -13,23 +13,35 @@ A small neural language model written from scratch in Java
 
 ## Training data
 
-See [training-data.jsonl](training-data.jsonl)
+The training data isn't anymore in this repo, it's about 50 million words in thousands of files, indexing it would nuke your computer :(
+You gotta download it from [GitHub releases](https://github.com/dervarex/wtdAI/releases) (tag `data-v1` and so on):
+For that, use the below command:
+```
+./gradlew downloadData
+```
+
+It'll download that archive into `build/data/`, check the hash and unpack it into `training-data/`.
+Use `--data` for a different folder while training, if you want to try it out with less (or more) training data.
+
+The archive is built from the Wikipedia dumps.
+`manifest.jsonl` lists the source page and when I got it.
 
 ### Copyright and licenses
 
 Training data comes from Wikipedia, English and simple english.
 Wikipedia text is licensed under the [Creative Commons Attribution-ShareAlike 4.0 License](https://creativecommons.org/licenses/by-sa/4.0/).
-See [training-data.jsonl](training-data.jsonl) for links and dates.
+See `manifest.jsonl` in the training data for links and dates of downloading.
 
 Changes:
-- Citations, notices, templates and markup were removed.
-- Non-ASCII characters were removed, and punctuation was stripped.
+- Templates, tables, references, lists, headings, images and markup were removed.
+- Non-ASCII characters were converted or removed, digits and punctuation besides periods and apostrophes were stripped.
 
 ## Running
 
-Build and run with Gradle from the project root:
+Build and run with Gradle from the project root, download the training data first:
 
 ```
+./gradlew downloadData
 ./gradlew run
 ./gradlew run --args="--debug --epochs 4 --sentences 5 --seed 'java is'"
 ```
@@ -47,6 +59,8 @@ Arguments use the `--` prefix from `minified-utils`'s `Parser`:
 | `--seed "words"` | `java is` | The words the sentence starts with                        |
 | `--save PATH`    | off       | Writes the trained model after training                   |
 | `--load PATH`    | off       | Skips training and loads the model                        |
+| `--data PATH`    | `training-data` | Folder with the training data `.txt` files          |
+| `--max-words N`  | all       | Only reads files until it has this many words             |
 
 ### Running it on your pc without training
 
@@ -55,5 +69,3 @@ I'll release models alongside the source code on GitHub releases, you can load t
 ```
 ./gradlew run --args="--load model.bin --sentences 5"
 ```
-
-

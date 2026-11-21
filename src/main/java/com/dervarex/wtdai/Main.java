@@ -4,6 +4,7 @@ package com.dervarex.wtdai;
 import com.dervarex.minified.utils.cli.Parser;
 
 import java.io.IOException;
+import java.nio.file.Paths;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class Main {
@@ -25,6 +26,8 @@ public class Main {
         parser.register("batch", (String v) -> LLM.BATCH = Integer.parseInt(v));
         parser.register("gpu", () -> LLM.GPU = true);
         parser.register("vocab", (String v) -> Vocabulary.MAX_VOCAB = Integer.parseInt(v));
+        parser.register("data", (String v) -> Tokenizer.DATA_DIR = Paths.get(v));
+        parser.register("max-words", (String v) -> Corpus.MAX_WORDS = Long.parseLong(v));
         parser.register("gpu-check", () -> {
             System.out.println("gpu check max diff: " + GpuMultiply.selfCheck());
             System.out.println("gpu logits check max diff: " + GpuMultiply.logitsCheck());
@@ -47,7 +50,8 @@ public class Main {
         try {
             LLM.start(debug.get());
         } catch (IOException e) {
-            System.out.println("Failed to start the LLM. fix your code");
+            System.out.println("Failed to start the LLM: " + e.getMessage());
+            System.out.println("fix your code");
         }
     }
 }

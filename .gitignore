@@ -31,7 +31,11 @@ replay_pid*
 # Ignore Gradle build output directory
 build
 
+# some kinda temporary tools
+tools/
 
 raw/
+# ./gradlew downloadData for downloading it
+/training-data/
 # TornadoVM install dir because appearantly that stuff doesn't ship via package or smth
 tornadovm-install/

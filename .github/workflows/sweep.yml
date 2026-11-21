@@ -3,6 +3,10 @@ name: sweep
 on:
   workflow_dispatch:
 
+env:
+  # the full training data is 50 million words, too much for 6 hours on a cpu runner
+  MAX_WORDS: "2000000"
+
 jobs:
   sweep:
     runs-on: ubuntu-24.04
@@ -50,18 +54,21 @@ jobs:
           java-version: 25
           cache: gradle
 
+      - name: Download training data
+        run: ./gradlew downloadData
+
       - name: Train ${{ matrix.name }}
         shell: bash
         run: |
           set -o pipefail
-          ./gradlew run --args="--debug --epochs ${{ matrix.epochs }} --hidden ${{ matrix.hidden }} --context ${{ matrix.context }} --vocab ${{ matrix.vocab }} --threads 4 --save model-${{ matrix.name }}.bin" | tee train.log
+          ./gradlew run --args="--debug --epochs ${{ matrix.epochs }} --hidden ${{ matrix.hidden }} --context ${{ matrix.context }} --vocab ${{ matrix.vocab }} --threads 4 --max-words $MAX_WORDS --save model-${{ matrix.name }}.bin" | tee train.log
 
       - name: Summary
         if: always()
         shell: bash
         run: |
           echo "### ${{ matrix.name }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "epochs ${{ matrix.epochs }}, hidden ${{ matrix.hidden }}, context ${{ matrix.context }}, vocab ${{ matrix.vocab }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "words $MAX_WORDS, epochs ${{ matrix.epochs }}, hidden ${{ matrix.hidden }}, context ${{ matrix.context }}, vocab ${{ matrix.vocab }}" >> "$GITHUB_STEP_SUMMARY"
           grep "test perplexity" train.log | tail -n 1 >> "$GITHUB_STEP_SUMMARY" || echo "no result" >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v4

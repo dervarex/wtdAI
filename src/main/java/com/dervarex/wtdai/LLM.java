@@ -1,8 +1,6 @@
 package com.dervarex.wtdai;
 
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
 
@@ -87,24 +85,15 @@ public class LLM {
             index = ModelIO.load(Paths.get(LOAD_PATH));
             if (debug) System.out.println("loaded " + LOAD_PATH + ", vocab: " + index.size());
         } else {
-            List<String> trainTokens = new ArrayList<>();
-            List<String> testTokens = new ArrayList<>();
-            List<Path> files = Tokenizer.files();
-            for (int i = 0; i < files.size(); i++) {
-                List<String> tokens = Tokenizer.tokenize(Files.readString(files.get(i)));
-                (i % TEST_EVERY == TEST_EVERY - 1 ? testTokens : trainTokens).addAll(tokens);
-            }
-
-            index = Vocabulary.buildVoc(trainTokens);
-            int[] trainIds = Vocabulary.encode(trainTokens, index);
-            int[] testIds = Vocabulary.encode(testTokens, index);
+            Corpus corpus = Corpus.read(Tokenizer.files(), TEST_EVERY);
+            index = corpus.index;
 
             if(debug) {
-                System.out.println("train tokens: " + trainTokens.size() + ", test tokens: " + testTokens.size());
+                System.out.println("files: " + corpus.files + ", train tokens: " + corpus.train.length + ", test tokens: " + corpus.test.length);
                 System.out.println("vocab:  " + index.size());
             }
 
-            train(trainIds, testIds, index.size(), debug);
+            train(corpus.train, corpus.test, index.size(), debug);
 
             if (SAVE_PATH != null) {
                 ModelIO.save(Paths.get(SAVE_PATH), index);

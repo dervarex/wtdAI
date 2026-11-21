@@ -33,6 +33,9 @@ on:
       batch:
         description: Words per weight update (1 = per-word-training)
         default: "1"
+      words:
+        description: Max training words (the full data has 50 million, 0 = all of it)
+        default: "5000000"
 
 jobs:
   train:
@@ -47,11 +50,16 @@ jobs:
           java-version: 25
           cache: gradle
 
+      - name: Download training data
+        run: ./gradlew downloadData
+
       - name: Train and generate
         shell: bash
         run: |
           set -o pipefail
-          ./gradlew run --args="--debug --epochs ${{ inputs.epochs }} --emb ${{ inputs.emb }} --hidden ${{ inputs.hidden }} --lr ${{ inputs.lr }} --sentences ${{ inputs.sentences }} --seed '${{ inputs.seed }}' --context ${{ inputs.context }} --threads ${{ inputs.threads }} --vocab ${{ inputs.vocab }} --batch ${{ inputs.batch }} --save model.bin" | tee train.log
+          MAX_WORDS=""
+          if [ "${{ inputs.words }}" != "0" ]; then MAX_WORDS="--max-words ${{ inputs.words }}"; fi
+          ./gradlew run --args="--debug --epochs ${{ inputs.epochs }} --emb ${{ inputs.emb }} --hidden ${{ inputs.hidden }} --lr ${{ inputs.lr }} --sentences ${{ inputs.sentences }} --seed '${{ inputs.seed }}' --context ${{ inputs.context }} --threads ${{ inputs.threads }} --vocab ${{ inputs.vocab }} --batch ${{ inputs.batch }} $MAX_WORDS --save model.bin" | tee train.log
 
       - uses: actions/upload-artifact@v4
         if: always()
