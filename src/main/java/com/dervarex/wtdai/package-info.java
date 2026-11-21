@@ -11,7 +11,9 @@
  * <h3>{@link ModelIO}</h3>
  * Saving and Loading of our model
  * <h3>{@link Tokenizer}</h3>
- * Gets the text, reads it and cuts it into Tokens
+ * Finds the training data files and cuts text into Tokens
+ * <h3>{@link Corpus}</h3>
+ * Reads all training data files and turns them into word IDs, split into training data and test stuff
  * <h3>{@link Vocabulary}</h3>
  * Turns the words from the Training data into numbers
  *

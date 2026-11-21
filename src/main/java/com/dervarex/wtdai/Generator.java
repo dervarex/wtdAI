@@ -58,23 +58,23 @@ public class Generator {
     static double[] predict(int[] ctx, int contextLength) {
         int vocab = b2.length;
 
-        double[] x = new double[contextLength * EMB];
+        float[] x = new float[contextLength * EMB];
         for (int c = 0; c < contextLength; c++) {
-            for (int e = 0; e < EMB; e++) x[c * EMB + e] = emb[ctx[c]][e];
+            for (int e = 0; e < EMB; e++) x[c * EMB + e] = emb[ctx[c] * EMB + e];
         }
 
-        double[] h = new double[HIDDEN];
+        float[] h = new float[HIDDEN];
         for (int j = 0; j < HIDDEN; j++) {
-            double s = b1[j];
-            for (int k = 0; k < x.length; k++) s += x[k] * w1[k][j];
-            h[j] = Math.tanh(s);
+            float s = b1[j];
+            for (int k = 0; k < x.length; k++) s += x[k] * w1[k * HIDDEN + j];
+            h[j] = (float) Math.tanh(s);
         }
 
         double[] p = new double[vocab];
         double max = Double.NEGATIVE_INFINITY;
         for (int v = 0; v < vocab; v++) {
             double s = b2[v];
-            for (int j = 0; j < HIDDEN; j++) s += h[j] * w2[j][v];
+            for (int j = 0; j < HIDDEN; j++) s += h[j] * w2[j * vocab + v];
             p[v] = s;
             max = Math.max(max, s);
         }

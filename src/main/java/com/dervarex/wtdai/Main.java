@@ -4,6 +4,7 @@ package com.dervarex.wtdai;
 import com.dervarex.minified.utils.cli.Parser;
 
 import java.io.IOException;
+import java.nio.file.Paths;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class Main {
@@ -20,15 +21,38 @@ public class Main {
         parser.register("seed", (String v) -> LLM.SEED = v);
         parser.register("save", (String v) -> LLM.SAVE_PATH = v);
         parser.register("load", (String v) -> LLM.LOAD_PATH = v);
+        parser.register("resume", (String v) -> LLM.RESUME_PATH = v);
         parser.register("context", (String v) -> LLM.CONTEXT = Integer.parseInt(v));
         parser.register("threads", (String v) -> LLM.THREADS = Integer.parseInt(v));
+        parser.register("batch", (String v) -> LLM.BATCH = Integer.parseInt(v));
+        parser.register("gpu", () -> LLM.GPU = true);
         parser.register("vocab", (String v) -> Vocabulary.MAX_VOCAB = Integer.parseInt(v));
+        parser.register("data", (String v) -> Tokenizer.DATA_DIR = Paths.get(v));
+        parser.register("max-words", (String v) -> Corpus.MAX_WORDS = Long.parseLong(v));
+        parser.register("gpu-check", () -> {
+            System.out.println("gpu check max diff: " + GpuMultiply.selfCheck());
+            System.out.println("gpu logits check max diff: " + GpuMultiply.logitsCheck());
+            System.out.println("gpu weights resident (1.0 = yes): " + GpuWeights.residencyCheck());
+            System.out.println("gpu batch ids wrong values (0 = okay): " + GpuGather.batchCheck());
+            System.out.println("gpu hidden tanh max diff: " + GpuActivation.hiddenCheck());
+            System.out.println("gpu hidden layer max diff: " + GpuHidden.check());
+            System.out.println("gpu row max wrong rows (0 = ok): " + GpuSoftmax.rowMaxCheck());
+            System.out.println("gpu softmax max diff: " + GpuSoftmax.softmaxCheck());
+            System.out.println("gpu forward loss diff: " + GpuForward.check());
+            System.out.println("gpu hidden grad max diff: " + GpuBackward.check());
+            System.out.println("gpu weight grad max diff: " + GpuWeightGrad.check());
+            System.out.println("gpu update max diff: " + GpuUpdate.check());
+            System.out.println("gpu context embedding wrong values (0 = ok): " + GpuEmbedding.check());
+            System.out.println("gpu embedding update max diff: " + GpuScatter.check());
+            System.exit(0);
+        });
         parser.parse(args);
 
         try {
             LLM.start(debug.get());
         } catch (IOException e) {
-            System.out.println("Failed to start the LLM. fix your code");
+            System.out.println("Failed to start the LLM: " + e.getMessage());
+            System.out.println("fix your code");
         }
     }
 }

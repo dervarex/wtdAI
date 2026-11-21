@@ -27,13 +27,16 @@ public class Vocabulary {
     static final String UNK = "<unk>"; // stands for words not in the vocabulary
     static final String END = "."; // the end of a sentence
 
-    public static Map<String, Integer> buildVoc(List<String> tokens) {
-        Map<String, Integer> counts = new HashMap<>();
-        for (String t : tokens) counts.merge(t, 1, Integer::sum);
-
-        counts.remove(END);
+    /**
+     * Keeps the {@link #MAX_VOCAB} most common words and gives each one an ID.
+     * @param counts how often each word is in the training text
+     * @return word -> ID, the special tokens come first
+     */
+    public static Map<String, Integer> buildVoc(Map<String, Integer> counts) {
         List<String> kept = new ArrayList<>(counts.keySet());
-        kept.sort((a, b) -> counts.get(b) - counts.get(a));
+        kept.remove(END);
+        // ties are sorted alphabetically so the vocabulary is the same every run
+        kept.sort(Comparator.comparing((String w) -> -counts.get(w)).thenComparing(Comparator.naturalOrder()));
         kept = kept.subList(0, Math.min(kept.size(), MAX_VOCAB - 3));
 
         Map<String, Integer> index = new LinkedHashMap<>();
@@ -44,13 +47,5 @@ public class Vocabulary {
             if (!index.containsKey(w)) index.put(w, index.size());
         }
         return index;
-    }
-
-    public static int[] encode(List<String> tokens, Map<String, Integer> index) {
-        int[] ids = new int[tokens.size()];
-        for (int i = 0; i < ids.length; i++) {
-            ids[i] = index.getOrDefault(tokens.get(i), index.get(UNK));
-        }
-        return ids;
     }
 }

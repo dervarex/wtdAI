@@ -1,8 +1,6 @@
 package com.dervarex.wtdai;
 
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
 
@@ -59,17 +57,21 @@ public class LLM {
     static double LR = 0.05;
     static int TEST_EVERY = 10; // every ..th article is held back for measuring perplexity (overfitting or not?)
     static int THREADS = 1; // training threads
+    static int BATCH = 1; // words per update
+    static GpuTrainStep gpuStep; // the batch step on the card
+    static boolean GPU = false; // compute the batch stuff on the GPU (you're gonna need tornadovm launcher for it)
 
-    static double[][] emb;// vocab x EMB
-    static double[][] w1; // (CONTEXT*EMB) x HIDDEN
-    static double[] b1; // HIDDEN
-    static double[][] w2; // HIDDEN x vocab
-    static double[] b2; // vocab
+    static float[] emb; // vocab x EMB one row per word
+    static float[] w1; // (CONTEXT*EMB) x HIDDEN one row per input
+    static float[] b1; // HIDDEN
+    static float[] w2; // HIDDEN x vocab one row per hidden neuron
+    static float[] b2; // vocab
 
     static String SEED = "java is";
     static int SENTENCES = 3;
     static String SAVE_PATH = null;
     static String LOAD_PATH = null;
+    static String RESUME_PATH = null;
 
 
     /**
@@ -81,32 +83,30 @@ public class LLM {
         Map<String, Integer> index;
 
         if (LOAD_PATH != null) {
-            index = ModelIO.load(Paths.get(LOAD_PATH));
+            index = ModelIO.load(Paths.get(LOAD_PATH)).index();
             if (debug) System.out.println("loaded " + LOAD_PATH + ", vocab: " + index.size());
         } else {
-            List<String> trainTokens = new ArrayList<>();
-            List<String> testTokens = new ArrayList<>();
-            List<Path> files = Tokenizer.files();
-            for (int i = 0; i < files.size(); i++) {
-                List<String> tokens = Tokenizer.tokenize(Files.readString(files.get(i)));
-                (i % TEST_EVERY == TEST_EVERY - 1 ? testTokens : trainTokens).addAll(tokens);
+            Map<String, Integer> vocabulary = null;
+            int done = 0;
+            if (RESUME_PATH != null) {
+                ModelIO.Model model = ModelIO.load(Paths.get(RESUME_PATH));
+                vocabulary = model.index();
+                done = model.epochs();
+                if (SAVE_PATH == null) SAVE_PATH = RESUME_PATH;
+                if (debug) System.out.println("resuming " + RESUME_PATH + " after epoch " + done + ", vocab: " + vocabulary.size()
+                        + ", context " + CONTEXT + ", emb " + EMB + ", hidden " + HIDDEN);
             }
 
-            index = Vocabulary.buildVoc(trainTokens);
-            int[] trainIds = Vocabulary.encode(trainTokens, index);
-            int[] testIds = Vocabulary.encode(testTokens, index);
+            Corpus corpus = Corpus.read(Tokenizer.files(), TEST_EVERY, vocabulary);
+            index = corpus.index;
 
             if(debug) {
-                System.out.println("train tokens: " + trainTokens.size() + ", test tokens: " + testTokens.size());
+                System.out.println("files: " + corpus.files + ", train tokens: " + corpus.train.length + ", test tokens: " + corpus.test.length);
                 System.out.println("vocab:  " + index.size());
             }
 
-            train(trainIds, testIds, index.size(), debug);
-
-            if (SAVE_PATH != null) {
-                ModelIO.save(Paths.get(SAVE_PATH), index);
-                if (debug) System.out.println("saved " + SAVE_PATH);
-            }
+            if (RESUME_PATH == null) initWeights(index.size());
+            train(corpus.train, corpus.test, index, done, debug);
         }
 
         for (int i = 0; i < SENTENCES; i++) {
@@ -115,21 +115,32 @@ public class LLM {
     }
 
     /**
-     * Inits all weights randomly and runs the training
-     * @param ids the training text encoded as an array of word IDs
-     * @param testIds the held back text
+     * Fills all weights with small random numbers
      * @param vocab the total number of unique words (size of the output layer)
-     * @param debug debug mode? prints epoch average loss here
      */
-    static void train(int[] ids, int[] testIds, int vocab, boolean debug) {
+    static void initWeights(int vocab) {
         Random rng = new Random(42);
-        emb = randomMatrix(rng, vocab, EMB);
-        w1 = randomMatrix(rng, CONTEXT * EMB, HIDDEN);
-        b1 = new double[HIDDEN];
-        w2 = randomMatrix(rng, HIDDEN, vocab);
-        b2 = new double[vocab];
+        emb = randomArray(rng, vocab * EMB);
+        w1 = randomArray(rng, CONTEXT * EMB * HIDDEN);
+        b1 = new float[HIDDEN];
+        w2 = randomArray(rng, HIDDEN * vocab);
+        b2 = new float[vocab];
+    }
 
-        for (int epoch = 0; epoch < EPOCHS; epoch++) {
+    /**
+     * Runs the training from {@code startEpoch} up to {@link #EPOCHS}
+     * @param ids the training text
+     * @param testIds the held back text
+     * @param index the vocabulary
+     * @param startEpoch how many epochs the model already has (0 for a new one)
+     * @param debug debug mode? prints epoch average loss and test perplexity
+     * @throws IOException if saving fails
+     */
+    static void train(int[] ids, int[] testIds, Map<String, Integer> index, int startEpoch, boolean debug) throws IOException {
+        if (startEpoch >= EPOCHS) {
+            System.out.println("the model already has " + startEpoch + " epochs, use --epochs with more than that to keep training");
+        }
+        for (int epoch = startEpoch; epoch < EPOCHS; epoch++) {
             // the learning rate shrinks linearly, down to 10% by the last epoch
             double lr = LR * (1 - 0.9 * epoch / EPOCHS);
             double total = trainEpoch(ids, ids.length, lr);
@@ -137,26 +148,31 @@ public class LLM {
                 System.out.printf("epoch %d, train loss %.4f, test perplexity %.2f%n",
                         epoch + 1, total / ids.length, perplexity(testIds, 0));
             }
+            if (SAVE_PATH != null) {
+                ModelIO.save(Paths.get(SAVE_PATH), index, epoch + 1);
+                if (debug) System.out.println("saved " + SAVE_PATH + " after epoch " + (epoch + 1));
+            }
         }
     }
 
     /**
-     * Runs one pass over the training part of the text, split across {@link #THREADS} threads
+     * Runs one pass over the training text, split across {@link #THREADS} threads
      * @param ids whole text as word IDs
-     * @param split where the training part ends
+     * @param count how many words to train on
      * @param lr learning rate for this pass
      * @return the summed loss over the pass
      */
-    static double trainEpoch(int[] ids, int split, double lr) {
+    static double trainEpoch(int[] ids, int count, double lr) {
+        if (BATCH > 1) return trainEpochBatched(ids, count, lr);
         double[] losses = new double[THREADS];
         Thread[] workers = new Thread[THREADS];
         for (int k = 0; k < THREADS; k++) {
             final int id = k;
-            final int from = (int) ((long) split * id / THREADS);
-            final int to = (int) ((long) split * (id + 1) / THREADS);
+            final int from = (int) ((long) count * id / THREADS);
+            final int to = (int) ((long) count * (id + 1) / THREADS);
             workers[k] = new Thread(() -> {
                 double sum = 0;
-                for (int t = from; t < to; t++) sum += step(contextAt(ids, t), ids[t], lr);
+                for (int t = from; t < to; t++) sum += step(contextAt(ids, t), ids[t], (float) lr);
                 losses[id] = sum;
             });
             workers[k].start();
@@ -174,18 +190,167 @@ public class LLM {
     }
 
     /**
-     * Measures how well the model predicts the held back part of the text
+     * Runs one pass over the training text in mini-batches, one weight update per batch
+     * @param ids whole text as word IDs
+     * @param count how many words to train on
+     * @param lrD learning rate for this pass
+     * @return the summed loss over the pass
+     */
+    static double trainEpochBatched(int[] ids, int count, double lrD) {
+        float lr = (float) lrD;
+        int vocab = b2.length;
+        int inDim = CONTEXT * EMB;
+        double total = 0;
+        double[] expBuf = new double[vocab];
+        if (GPU) {
+            if (BATCH != GpuTrainStep.ROWS) throw new IllegalStateException("gpu needs --batch " + GpuTrainStep.ROWS);
+            if (gpuStep == null) gpuStep = new GpuTrainStep(emb, w1, b1, w2, b2);
+        }
+        for (int start = 0; start < count; start += BATCH) {
+            int n = Math.min(BATCH, count - start);
+
+            if (GPU) {
+                if (n == GpuTrainStep.ROWS) {
+                    int[] batchIds = new int[n * CONTEXT];
+                    int[] targets = new int[n];
+                    for (int b = 0; b < n; b++) {
+                        int[] ctx = contextAt(ids, start + b);
+                        System.arraycopy(ctx, 0, batchIds, b * CONTEXT, CONTEXT);
+                        targets[b] = ids[start + b];
+                    }
+                    gpuStep.run(batchIds, targets, lr);
+                }
+                continue;
+            }
+
+            // inputs: context embeddings, one row per word
+            float[][] x = new float[n][inDim];
+            int[][] ctx = new int[n][];
+            for (int b = 0; b < n; b++) {
+                ctx[b] = contextAt(ids, start + b);
+                for (int c = 0; c < CONTEXT; c++) {
+                    for (int e = 0; e < EMB; e++) x[b][c * EMB + e] = emb[ctx[b][c] * EMB + e];
+                }
+            }
+
+            // forward pass
+            float[][] h = new float[n][HIDDEN];
+            for (int b = 0; b < n; b++) {
+                System.arraycopy(b1, 0, h[b], 0, HIDDEN);
+                for (int k = 0; k < inDim; k++) {
+                    float xk = x[b][k];
+                    int row = k * HIDDEN;
+                    for (int j = 0; j < HIDDEN; j++) h[b][j] += xk * w1[row + j];
+                }
+                for (int j = 0; j < HIDDEN; j++) h[b][j] = (float) Math.tanh(h[b][j]);
+            }
+            float[][] p = new float[n][vocab];
+            for (int b = 0; b < n; b++) {
+                System.arraycopy(b2, 0, p[b], 0, vocab);
+                for (int j = 0; j < HIDDEN; j++) {
+                    float hj = h[b][j];
+                    int row = j * vocab;
+                    for (int v = 0; v < vocab; v++) p[b][v] += hj * w2[row + v];
+                }
+                float max = Float.NEGATIVE_INFINITY;
+                for (int v = 0; v < vocab; v++) max = Math.max(max, p[b][v]);
+                // exp in double
+                double sum = 0;
+                for (int v = 0; v < vocab; v++) {
+                    expBuf[v] = Math.exp((double) (p[b][v] - max));
+                    sum += expBuf[v];
+                }
+                for (int v = 0; v < vocab; v++) p[b][v] = (float) (expBuf[v] / sum);
+                total += -Math.log(p[b][ids[start + b]] + 1e-12);
+                p[b][ids[start + b]] -= 1;
+                float inv = 1f / n;
+                for (int v = 0; v < vocab; v++) p[b][v] *= inv;
+            }
+
+            // gradients flowing back, calculated before weight changes
+            float[][] dh = new float[n][HIDDEN];
+            for (int b = 0; b < n; b++) {
+                for (int j = 0; j < HIDDEN; j++) {
+                    float s = 0;
+                    int row = j * vocab;
+                    for (int v = 0; v < vocab; v++) s += w2[row + v] * p[b][v];
+                    dh[b][j] = s * (1 - h[b][j] * h[b][j]);
+                }
+            }
+            float[][] dx = new float[n][inDim];
+            for (int b = 0; b < n; b++) {
+                for (int k = 0; k < inDim; k++) {
+                    float s = 0;
+                    int row = k * HIDDEN;
+                    for (int j = 0; j < HIDDEN; j++) s += w1[row + j] * dh[b][j];
+                    dx[b][k] = s;
+                }
+            }
+
+            // weight updates
+            for (int b = 0; b < n; b++) {
+                for (int j = 0; j < HIDDEN; j++) {
+                    float scale = lr * h[b][j];
+                    int row = j * vocab;
+                    for (int v = 0; v < vocab; v++) w2[row + v] -= scale * p[b][v];
+                }
+                for (int v = 0; v < vocab; v++) b2[v] -= lr * p[b][v];
+            }
+            for (int b = 0; b < n; b++) {
+                for (int k = 0; k < inDim; k++) {
+                    float scale = lr * x[b][k];
+                    int row = k * HIDDEN;
+                    for (int j = 0; j < HIDDEN; j++) w1[row + j] -= scale * dh[b][j];
+                }
+            }
+            for (int j = 0; j < HIDDEN; j++) {
+                float g = 0;
+                for (int b = 0; b < n; b++) g += dh[b][j];
+                b1[j] -= lr * g;
+            }
+            for (int b = 0; b < n; b++) {
+                for (int c = 0; c < CONTEXT; c++) {
+                    for (int e = 0; e < EMB; e++) emb[ctx[b][c] * EMB + e] -= lr * dx[b][c * EMB + e];
+                }
+            }
+        }
+        return total;
+    }
+
+    /**
+     * Measures how well the model predicts the held back part of the text, split across {@link #THREADS} threads
      * @param ids whole text as word IDs
      * @param from where the held back part starts
      * @return the perplexity, lower is better
      */
     static double perplexity(int[] ids, int from) {
-        double nll = 0;
-        for (int t = from; t < ids.length; t++) {
-            double p = Generator.predict(contextAt(ids, t), CONTEXT)[ids[t]];
-            nll -= Math.log(p + 1e-12);
+        double[] nll = new double[THREADS];
+        Thread[] workers = new Thread[THREADS];
+        int count = ids.length - from;
+        for (int k = 0; k < THREADS; k++) {
+            final int id = k;
+            final int start = from + (int) ((long) count * id / THREADS);
+            final int end = from + (int) ((long) count * (id + 1) / THREADS);
+            workers[k] = new Thread(() -> {
+                double sum = 0;
+                for (int t = start; t < end; t++) {
+                    double p = Generator.predict(contextAt(ids, t), CONTEXT)[ids[t]];
+                    sum -= Math.log(p + 1e-12);
+                }
+                nll[id] = sum;
+            });
+            workers[k].start();
         }
-        return Math.exp(nll / (ids.length - from));
+        for (Thread w : workers) {
+            try {
+                w.join();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+        double total = 0;
+        for (double v : nll) total += v;
+        return Math.exp(total / count);
     }
 
     /**
@@ -195,60 +360,65 @@ public class LLM {
      * @param lr learning rate for this step
      * @return the cross-entropy loss
      */
-    static double step(int[] ctx, int target, double lr) {
+    static double step(int[] ctx, int target, float lr) {
         int vocab = b2.length;
 
-        double[] x = new double[CONTEXT * EMB];
+        float[] x = new float[CONTEXT * EMB];
         for (int c = 0; c < CONTEXT; c++) {
-            for (int e = 0; e < EMB; e++) x[c * EMB + e] = emb[ctx[c]][e];
+            for (int e = 0; e < EMB; e++) x[c * EMB + e] = emb[ctx[c] * EMB + e];
         }
 
-        double[] h = new double[HIDDEN];
+        float[] h = new float[HIDDEN];
         for (int j = 0; j < HIDDEN; j++) {
-            double s = b1[j];
-            for (int k = 0; k < x.length; k++) s += x[k] * w1[k][j];
-            h[j] = Math.tanh(s);
+            float s = b1[j];
+            for (int k = 0; k < x.length; k++) s += x[k] * w1[k * HIDDEN + j];
+            h[j] = (float) Math.tanh(s);
         }
 
-        double[] p = new double[vocab];
-        double max = Double.NEGATIVE_INFINITY;
-        for (int v = 0; v < vocab; v++) {
-            double s = b2[v];
-            for (int j = 0; j < HIDDEN; j++) s += h[j] * w2[j][v];
-            p[v] = s;
-            max = Math.max(max, s);
+        float[] p = new float[vocab];
+        System.arraycopy(b2, 0, p, 0, vocab);
+        for (int j = 0; j < HIDDEN; j++) {
+            float hj = h[j];
+            int row = j * vocab;
+            for (int v = 0; v < vocab; v++) p[v] += hj * w2[row + v];
         }
-        double sum = 0;
+        float max = Float.NEGATIVE_INFINITY;
+        for (int v = 0; v < vocab; v++) max = Math.max(max, p[v]);
+        float sum = 0;
         for (int v = 0; v < vocab; v++) {
-            p[v] = Math.exp(p[v] - max);
+            p[v] = (float) Math.exp(p[v] - max);
             sum += p[v];
         }
         for (int v = 0; v < vocab; v++) p[v] /= sum;
         double loss = -Math.log(p[target] + 1e-12);
         p[target] -= 1;
 
-        double[] dh = new double[HIDDEN];
+        float[] dh = new float[HIDDEN];
         for (int j = 0; j < HIDDEN; j++) {
-            for (int v = 0; v < vocab; v++) dh[j] += w2[j][v] * p[v];
+            int row = j * vocab;
+            for (int v = 0; v < vocab; v++) dh[j] += w2[row + v] * p[v];
         }
         for (int j = 0; j < HIDDEN; j++) {
-            for (int v = 0; v < vocab; v++) w2[j][v] -= lr * h[j] * p[v];
+            float scale = lr * h[j];
+            int row = j * vocab;
+            for (int v = 0; v < vocab; v++) w2[row + v] -= scale * p[v];
         }
         for (int v = 0; v < vocab; v++) b2[v] -= lr * p[v];
 
         for (int j = 0; j < HIDDEN; j++) dh[j] *= 1 - h[j] * h[j];
 
-        double[] dx = new double[CONTEXT * EMB];
+        float[] dx = new float[CONTEXT * EMB];
         for (int k = 0; k < x.length; k++) {
+            int row = k * HIDDEN;
             for (int j = 0; j < HIDDEN; j++) {
-                dx[k] += w1[k][j] * dh[j];
-                w1[k][j] -= lr * x[k] * dh[j];
+                dx[k] += w1[row + j] * dh[j];
+                w1[row + j] -= lr * x[k] * dh[j];
             }
         }
         for (int j = 0; j < HIDDEN; j++) b1[j] -= lr * dh[j];
 
         for (int c = 0; c < CONTEXT; c++) {
-            for (int e = 0; e < EMB; e++) emb[ctx[c]][e] -= lr * dx[c * EMB + e];
+            for (int e = 0; e < EMB; e++) emb[ctx[c] * EMB + e] -= lr * dx[c * EMB + e];
         }
         return loss;
     }
@@ -269,17 +439,14 @@ public class LLM {
     }
 
     /**
-     * Creates a matrix filled with small random numbers.
+     * Creates an array filled with small random numbers.
      * @param rng random number generator
-     * @param rows how many rows the matrix should have
-     * @param cols how many columns the matrix should have
-     * @return a new matrix with random values
+     * @param size how many numbers
+     * @return a new array with random values
      */
-    static double[][] randomMatrix(Random rng, int rows, int cols) {
-        double[][] m = new double[rows][cols];
-        for (double[] row : m) {
-            for (int j = 0; j < cols; j++) row[j] = (rng.nextDouble() - 0.5) * 0.2;
-        }
-        return m;
+    static float[] randomArray(Random rng, int size) {
+        float[] a = new float[size];
+        for (int i = 0; i < size; i++) a[i] = (float) ((rng.nextDouble() - 0.5) * 0.2);
+        return a;
     }
 }
