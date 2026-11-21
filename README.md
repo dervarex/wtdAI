@@ -62,10 +62,32 @@ Arguments use the `--` prefix from `minified-utils`'s `Parser`:
 | `--data PATH`    | `training-data` | Folder with the training data `.txt` files          |
 | `--max-words N`  | all       | Only reads files until it has this many words             |
 
+### Training on the GPU
+
+You'll need [TornadoVM](https://github.com/beehive-lab/TornadoVM)
+
+```
+./gradlew downloadTornado
+```
+
+Then:
+
+```
+./gradlew runGpu --args="--debug --epochs 2 --save model.bin"
+```
+
+On an RTX 3060 one epoch over all 50 million words takes about 15 minutes, depending on your GPU it can take longer or shorter.
+
 ### Running it on your pc without training
 
 I'll release models alongside the source code on GitHub releases, you can load them like that:
 
+CPU:
 ```
 ./gradlew run --args="--load model.bin --sentences 5"
+```
+
+GPU:
+```
+./gradlew runGpu --args="--load model.bin --sentences 5"
 ```
